@@ -157,7 +157,48 @@ def plot_chart(data_dict):
     with st.container():
         st.info(f"💡 **ARTIKEL GRAFIK:** Saham ini tergolong **{ket_range}** dengan kondisi indikator **{ket_rsi}**.")
     st.divider()
+# --- BAGIAN PENJELASAN (INTERPRETASI AI) ---
+    with st.container():
+        st.markdown(f"#### 📝 Analisis AI untuk {ticker}")
+        
+        # 1. Penjelasan Sinyal (Kesimpulan)
+        if "🏆" in signal:
+            st.success(f"""
+            **KESIMPULAN: STRONG BUY (REVERSAL)**
+            Saham ini membentuk pola **SPRING**. Harga sempat turun menjebol Support AI ({sup:,.0f}) untuk memancing panic selling, tapi berhasil ditutup naik kembali. 
+            Ini adalah jejak **Smart Money** yang melakukan akumulasi di harga bawah.
+            """)
+        elif "✅" in signal:
+            st.info(f"""
+            **KESIMPULAN: BUY ON WEAKNESS (AKUMULASI)**
+            Harga saat ini ({price:,.0f}) berada di **Zona Support AI** ({sup:,.0f}). 
+            Ini adalah area beli yang aman dengan risiko rendah. Strategi yang disarankan: **Cicil Beli Bertahap**.
+            """)
+        elif "⚠️" in signal:
+            st.warning(f"""
+            **KESIMPULAN: WATCH FOR BREAKOUT**
+            Harga mendekati **Resistance AI** ({res:,.0f}). Jangan buru-buru beli. 
+            Tunggu sampai harga berhasil menembus resistance dengan volume besar (Breakout) baru ikutan beli.
+            """)
+        else:
+            st.write(f"""
+            **KESIMPULAN: WAIT AND SEE**
+            Harga berada di tengah-tengah rentang konsolidasi ("No Man's Land"). Rasio Risk/Reward kurang menarik.
+            Tunggu harga turun ke {sup:,.0f} atau naik menembus {res:,.0f}.
+            """)
 
+        # 2. Legenda Singkat (Expander agar rapi)
+        with st.expander("📖 Cara Membaca Grafik Ini"):
+            st.markdown(f"""
+            * **Candlestick:** Menunjukkan pergerakan harga harian.
+            * **Garis Putus-putus Biru (Bawah):** Support Kuat AI. Area di mana pembeli biasanya masuk.
+            * **Garis Putus-putus Biru (Atas):** Resistance AI. Area di mana penjual biasanya menekan harga.
+            * **Grafik Ungu (Bawah):** Indikator RSI ({rsi_val}).
+                * Jika RSI < 30: Jenuh Jual (Murah).
+                * Jika RSI > 70: Jenuh Beli (Mahal).
+                * Jika RSI naik saat harga turun: Sinyal Divergence (Bagus).
+            """)
+    st.divider()
 # --- FRONTEND ---
 if tombol_scan:
     tickers = [t.strip() for t in ticker_input.split(",")]
