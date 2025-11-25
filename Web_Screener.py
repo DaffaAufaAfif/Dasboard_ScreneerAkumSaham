@@ -10,12 +10,12 @@ from sklearn.cluster import KMeans
 warnings.filterwarnings("ignore")
 
 # --- KONFIGURASI ---
-st.set_page_config(layout="wide", page_title="Screener Saham Decision Maker")
+st.set_page_config(layout="wide", page_title="Screener Saham Smart Context")
 
-st.title("💎 Dashboard Sniper Saham (Decision Maker)")
+st.title("💎 Dashboard Sniper Saham (Context Aware)")
 st.markdown("""
-Mendeteksi fase akumulasi dengan **Satu Keputusan Mutlak**. 
-Risiko 'Jurang Lebar' sudah dihitung otomatis ke dalam sinyal. Tidak perlu analisis manual lagi.
+Mendeteksi fase akumulasi dengan **Kecerdasan Kontekstual**. 
+Aplikasi membedakan kriteria risiko antara saham Stabil (Blue Chip) dan Saham Agresif (Volatil).
 """)
 
 if 'hasil_scan' not in st.session_state:
@@ -30,9 +30,10 @@ ticker_input = st.sidebar.text_area("Daftar Saham", default_tickers, height=150)
 
 st.sidebar.subheader("Parameter")
 period_days = st.sidebar.slider("Periode Data", 30, 90, 60)
-max_range_pct = st.sidebar.slider("Max Range (%)", 5, 30, 25) / 100
+# Kita hapus slider Max Range karena sekarang Range dipakai untuk klasifikasi otomatis
+st.sidebar.info("ℹ️ Max Range sekarang otomatis menyesuaikan jenis saham.")
 
-tombol_scan = st.sidebar.button("🚀 Analisis Keputusan Final", type="primary")
+tombol_scan = st.sidebar.button("🚀 Analisis Cerdas", type="primary")
 
 # --- FUNGSI LOGIKA ---
 
@@ -55,7 +56,6 @@ def calculate_dynamic_snr(df):
     return centers[0], centers[1]
 
 def detect_spring_pattern(row, ai_support):
-    # Pola Spring: Low tembus support, Close balik ke atas support
     return (row['Low'] < ai_support) and (row['Close'] > ai_support * 0.995)
 
 def get_ai_status(ticker):
@@ -67,74 +67,84 @@ def get_ai_status(ticker):
         df['RSI'] = calculate_rsi(df['Close'])
         recent = df.tail(period_days)
         
-        # 1. Hitung Support AI & Support Klasik
         ai_support, ai_resistance = calculate_dynamic_snr(recent)
         classic_low = recent['Low'].min()
-        
-        # 2. Hitung GAP (Risiko Jurang)
         gap_pct = (ai_support - classic_low) / ai_support
         
-        # 3. Analisis Posisi
         current_candle = recent.iloc[-1]
         ai_range = (ai_resistance - ai_support) / ai_support
-        pos = (current_candle['Close'] - ai_support) / (ai_resistance - ai_support)
         
-        # 4. Deteksi Pola
+        # --- 1. DETEKSI TIPE SAHAM (KARAKTER) ---
+        stock_type = "Normal"
+        max_gap_allowed = 0.04  # Default 4%
+        
+        if ai_range <= 0.12: # Range < 12% (Sangat Stabil / Blue Chip Like)
+            stock_type = "🛡️ Stabil (Blue Chip Like)"
+            max_gap_allowed = 0.025 # Aturan Ketat: Gap max 2.5%
+        elif ai_range <= 0.22: # Range 12-22% (Normal / Second Liner)
+            stock_type = "⚖️ Moderat (Second Liner)"
+            max_gap_allowed = 0.045 # Aturan Standar: Gap max 4.5%
+        else: # Range > 22% (Agresif / Gorengan Like)
+            stock_type = "🔥 Agresif (Volatil)"
+            max_gap_allowed = 0.07 # Aturan Longgar: Gap max 7%
+
+        # --- 2. ANALISIS KEPUTUSAN DENGAN KONTEKS ---
+        pos = (current_candle['Close'] - ai_support) / (ai_resistance - ai_support)
         is_spring = detect_spring_pattern(current_candle, ai_support)
         rsi_good = (current_candle['RSI'] > 30) and (current_candle['RSI'] < 65)
         
-        # --- LOGIKA KEPUTUSAN FINAL (THE BRAIN) ---
         signal_label = "NETRAL"
         status_desc = "Wait and See"
         
-        if ai_range <= max_range_pct:
+        # Logika Keputusan (Adaptif terhadap Tipe Saham)
+        if gap_pct <= max_gap_allowed: # Lolos Filter Jurang (Sesuai Tipe)
             
-            # A. KELOMPOK GOLDEN (Spring Pattern)
             if is_spring and rsi_good:
-                if gap_pct <= 0.025: # Gap < 2.5% (Sangat Aman)
-                    signal_label = "💎 DIAMOND"
-                    status_desc = "Perfect Setup: Reversal + Low Risk"
-                elif gap_pct <= 0.04: # Gap < 4% (Standar)
-                    signal_label = "🥇 GOLDEN"
-                    status_desc = "Strong Reversal Pattern"
-                else: # Gap Lebar (Bahaya)
-                    signal_label = "⚠️ SPECULATIVE"
-                    status_desc = "Reversal tapi Jurang Lebar (High Risk)"
+                signal_label = "💎 DIAMOND"
+                status_desc = f"Perfect Reversal untuk tipe {stock_type}"
             
-            # B. KELOMPOK BUY ON SUPPORT (Tanpa Spring)
             elif pos <= 0.15: # Dekat Support AI
-                if gap_pct <= 0.03: # Gap Kecil
+                # Bedakan Diamond dan Safe Buy berdasarkan kedekatan dengan Support Klasik
+                if gap_pct <= (max_gap_allowed * 0.6): # Gap sangat tipis
+                    signal_label = "🥇 GOLDEN" 
+                    status_desc = "Sangat Aman (Best Price)"
+                else:
                     signal_label = "✅ SAFE BUY"
-                    status_desc = "Aman di Support (Lantai Kuat)"
-                else: # Gap Lebar
-                    signal_label = "❌ TRAP / WAIT"
-                    status_desc = "Jebakan: Support AI Rapuh (Jurang Dalam)"
+                    status_desc = "Akumulasi Wajar"
             
-            # C. LAINNYA
             elif 0.85 <= pos <= 1.05:
-                signal_label = "⚠️ WATCH BREAKOUT"
+                signal_label = "⚠️ BREAKOUT"
                 status_desc = "Dekat Resistance"
             else:
                 signal_label = "💤 WAIT"
-                status_desc = "No Clear Signal"
+                status_desc = "Sideways di Tengah"
 
-            # Keterangan Tambahan
-            if ai_range <= 0.15: ket_range = "😴 Tidur"
-            else: ket_range = "🙂 Normal"
+        else: # Gagal Filter Jurang (Gap terlalu lebar untuk tipenya)
+            signal_label = "❌ TRAP / WAIT"
+            status_desc = f"Jurang {gap_pct*100:.1f}% terlalu lebar untuk saham {stock_type}"
 
-            return {
-                "Ticker": ticker.replace(".JK", ""),
-                "Keputusan": signal_label, # Kolom Utama
-                "Alasan": status_desc,
-                "Gap Risiko": f"{round(gap_pct*100, 1)}%", # Info saja
-                "Harga": current_candle['Close'],
-                "Support AI": round(ai_support, 0),
-                "Low Klasik": round(classic_low, 0),
-                "RSI": round(current_candle['RSI'], 0),
-                "Data": recent,
-                "Resistance": ai_resistance, # Untuk chart
-                "Raw Gap": gap_pct # Untuk sorting
-            }
+        # Keterangan Tambahan
+        rsi_val = current_candle['RSI']
+        if rsi_val < 30: ket_rsi = "🟢 Oversold"
+        elif rsi_val < 45: ket_rsi = "📈 Bangkit"
+        elif rsi_val > 70: ket_rsi = "🔴 Overbought"
+        else: ket_rsi = "⚪ Netral"
+
+        return {
+            "Ticker": ticker.replace(".JK", ""),
+            "Keputusan": signal_label,
+            "Tipe Saham": stock_type, # Info Baru
+            "Harga": current_candle['Close'],
+            "Support AI": round(ai_support, 0),
+            "Low Klasik": round(classic_low, 0),
+            "Gap %": gap_pct,
+            "Range %": ai_range,
+            "RSI": round(rsi_val, 0),
+            "Ket. RSI": ket_rsi,
+            "Data": recent,
+            "Resistance": ai_resistance
+        }
+
     except:
         return None
     return None
@@ -143,7 +153,7 @@ def plot_chart(data_dict):
     df = data_dict['Data']
     ticker = data_dict['Ticker']
     signal = data_dict['Keputusan']
-    alasan = data_dict['Alasan']
+    tipe = data_dict['Tipe Saham']
     
     mc = mpf.make_marketcolors(up='g', down='r', inherit=True)
     s = mpf.make_mpf_style(base_mpf_style='yahoo', marketcolors=mc)
@@ -155,36 +165,23 @@ def plot_chart(data_dict):
     ]
     
     buf = io.BytesIO()
-    title_text = f"{ticker} [{signal}]"
+    title_text = f"{ticker} [{signal}] - {tipe}"
     
-    # Chart 3 Garis (AI + Klasik)
     fig, ax = mpf.plot(
         df, type='candle', style=s, title=title_text, volume=True,
         addplot=rsi_lines, mav=(20),
         hlines=dict(hlines=[data_dict['Support AI'], data_dict['Resistance'], data_dict['Low Klasik']], 
-                    colors=['b','b', 'r'], 
-                    linestyle=['-.', '-.', ':'],
-                    linewidths=(1.5, 1.5, 1.0)), 
+                    colors=['b','b', 'r'], linestyle=['-.', '-.', ':'], linewidths=(1.5, 1.5, 1.0)), 
         panel_ratios=(6,2,2),
         savefig=dict(fname=buf, dpi=100, bbox_inches='tight'),
         returnfig=True
     )
     st.pyplot(fig)
 
-    # Penjelasan Tegas
     with st.container():
-        if "DIAMOND" in signal:
-            st.success(f"**KEPUTUSAN: BELI AGRESIF (AMAN).** {alasan}. Support AI dan Klasik berimpit, risiko minim.")
-        elif "GOLDEN" in signal:
-            st.success(f"**KEPUTUSAN: BELI STANDARD.** {alasan}. Masuk bertahap.")
-        elif "SAFE BUY" in signal:
-            st.info(f"**KEPUTUSAN: CICIL BELI (AMAN).** {alasan}. Harga di dasar yang solid.")
-        elif "SPECULATIVE" in signal:
-            st.warning(f"**KEPUTUSAN: SPEKULASI / HATI-HATI.** {alasan}. Ada jurang di bawah support. Siapkan Cut Loss ketat.")
-        elif "TRAP" in signal:
-            st.error(f"**KEPUTUSAN: JANGAN BELI! (SKIP).** {alasan}. Risiko jatuh ke Low Klasik ({data_dict['Low Klasik']:,.0f}) terlalu besar.")
-        else:
-            st.write(f"**KEPUTUSAN: WAIT.** {alasan}.")
+        st.info(f"💡 **KONTEKS SAHAM:** Ini adalah saham tipe **{tipe}**. Volatilitasnya {data_dict['Range %']*100:.1f}%.")
+        if "TRAP" in signal:
+            st.error(f"⚠️ **PERINGATAN:** Jarak ke lantai bawah ({data_dict['Gap %']*100:.1f}%) dianggap terlalu berbahaya untuk karakteristik saham {tipe} ini.")
     st.divider()
 
 # --- FRONTEND ---
@@ -195,7 +192,7 @@ if tombol_scan:
     st_text = st.empty()
     
     for i, t in enumerate(tickers):
-        st_text.text(f"Menghitung Risiko & Peluang: {t}...")
+        st_text.text(f"Analisis Kontekstual: {t}...")
         res = get_ai_status(t)
         if res: results.append(res)
         progress_bar.progress((i + 1) / len(tickers))
@@ -209,32 +206,31 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
     results = st.session_state['hasil_scan']
     df_res = pd.DataFrame(results)
     
-    # Sorting Prioritas Mutlak (Diamond > Golden > Safe > Lainnya)
     def assign_priority(sig):
         if '💎' in sig: return 0
         if '🥇' in sig: return 1
         if '✅' in sig: return 2
-        if '⚠️' in sig: return 3 # Speculative & Breakout
-        if '❌' in sig: return 5 # Trap (Paling bawah atau warning)
+        if '⚠️' in sig: return 3
+        if '❌' in sig: return 5
         return 4
 
     df_res['Priority'] = df_res['Keputusan'].apply(assign_priority)
-    df_res = df_res.sort_values(by=['Priority', 'Raw Gap']) # Sort by Priority, then by Gap Terkecil
+    df_res = df_res.sort_values(by=['Priority'])
     
     diamond_count = len(df_res[df_res['Keputusan'].str.contains('💎')])
     if diamond_count > 0:
         st.balloons()
-        st.success(f"DITEMUKAN {diamond_count} SAHAM DIAMOND SETUP (PERFECT)!")
+        st.success(f"DITEMUKAN {diamond_count} DIAMOND SETUP (CONTEXT MATCHED)!")
 
     def color_signal(val):
-        if '💎' in val: return 'background-color: #00ced1; color: white; font-weight: bold' # Turquoise
-        if '🥇' in val: return 'background-color: #ffd700; color: black; font-weight: bold' # Gold
-        if '✅' in val: return 'background-color: #90ee90; color: black; font-weight: bold' # Green
-        if '⚠️' in val: return 'background-color: #ffcccb; color: black; font-weight: bold' # Reddish
-        if '❌' in val: return 'background-color: #808080; color: white; font-weight: bold' # Grey
+        if '💎' in val: return 'background-color: #00ced1; color: white; font-weight: bold'
+        if '🥇' in val: return 'background-color: #ffd700; color: black; font-weight: bold'
+        if '✅' in val: return 'background-color: #90ee90; color: black; font-weight: bold'
+        if '⚠️' in val: return 'background-color: #ffcccb; color: black; font-weight: bold'
+        if '❌' in val: return 'background-color: #808080; color: white; font-weight: bold'
         return ''
 
-    cols_order = ['Ticker', 'Keputusan', 'Gap Risiko', 'Harga', 'Support AI', 'Low Klasik', 'RSI']
+    cols_order = ['Ticker', 'Keputusan', 'Tipe Saham', 'Harga', 'Support AI', 'Low Klasik', 'RSI']
     
     st.dataframe(
         df_res[cols_order].style.map(color_signal, subset=['Keputusan']), 
