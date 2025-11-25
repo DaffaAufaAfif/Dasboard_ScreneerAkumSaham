@@ -10,12 +10,12 @@ from sklearn.cluster import KMeans
 warnings.filterwarnings("ignore")
 
 # --- KONFIGURASI ---
-st.set_page_config(layout="wide", page_title="Screener Saham AI Narrative")
+st.set_page_config(layout="wide", page_title="Screener Saham Risk Aware")
 
-st.title("🏆 Dashboard Sniper Saham (Full AI Narrative)")
+st.title("🏆 Dashboard Sniper Saham (Risk Aware Edition)")
 st.markdown("""
-Mendeteksi fase akumulasi dengan **Analisis Lengkap**: 
-Ranking Prioritas, Tabel Rapi, dan **Penjelasan Strategi Mendetail** di bawah grafik.
+Mendeteksi fase akumulasi dengan fitur **Risk Gap Detection**. 
+Waspada jika jarak antara Support AI dan Support Klasik (Low) terlalu lebar.
 """)
 
 if 'hasil_scan' not in st.session_state:
@@ -32,7 +32,7 @@ st.sidebar.subheader("Parameter")
 period_days = st.sidebar.slider("Periode Data", 30, 90, 60)
 max_range_pct = st.sidebar.slider("Max Range (%)", 5, 30, 25) / 100
 
-tombol_scan = st.sidebar.button("🚀 Cari Sinyal Prioritas", type="primary")
+tombol_scan = st.sidebar.button("🚀 Cari Sinyal Aman", type="primary")
 
 # --- FUNGSI LOGIKA ---
 
@@ -68,9 +68,16 @@ def get_ai_status(ticker):
         df['RSI'] = calculate_rsi(df['Close'])
         recent = df.tail(period_days)
         
+        # 1. Hitung Support AI
         ai_support, ai_resistance = calculate_dynamic_snr(recent)
-        current_candle = recent.iloc[-1]
         
+        # 2. Hitung Support Klasik (Absolute Low)
+        classic_low = recent['Low'].min()
+        
+        # 3. Hitung RISK GAP (Jarak antara AI dan Klasik)
+        risk_gap_pct = (ai_support - classic_low) / ai_support
+        
+        current_candle = recent.iloc[-1]
         ai_range = (ai_resistance - ai_support) / ai_support
         
         if ai_range <= max_range_pct:
@@ -80,23 +87,33 @@ def get_ai_status(ticker):
             status = ""
             signal_label = "NETRAL"
             
-            # Logika Prioritas
+            # Labeling Signal
             if is_golden:
-                status = "✨ GOLDEN SETUP"
                 signal_label = "🥇 GOLDEN"
+                status = "Reversal Pattern Detected"
             elif pos <= 0.10: 
-                status = "STRONG BUY (Best Price)"
                 signal_label = "⭐ STRONG BUY"
+                status = "Near AI Support"
             elif pos <= 0.25: 
-                status = "BUY ZONE (Accumulation)"
                 signal_label = "✅ BUY"
+                status = "Accumulation Zone"
             elif 0.85 <= pos <= 1.05:
-                status = "POTENSI BREAKOUT"
                 signal_label = "⚠️ BREAKOUT"
+                status = "Near Resistance"
             else:
-                status = "SIDEWAYS"
                 signal_label = "💤 WAIT"
+                status = "Sideways"
+
+            # --- FILTER RISK GAP (OBATNYA) ---
+            # Jika Gap terlalu lebar (> 3%), turunkan rating sinyal atau beri warning
+            risk_note = "Aman"
+            if risk_gap_pct > 0.03: # Jika jarak lebih dari 3%
+                risk_note = "⚠️ JURANG LEBAR"
+                # Jika sinyalnya Buy, kita tambah warning
+                if "BUY" in signal_label or "GOLDEN" in signal_label:
+                    status += " (High Risk Gap)"
             
+            # Keterangan Range & RSI
             if ai_range <= 0.15: ket_range = "😴 Tidur / Kalem"
             elif ai_range <= 0.25: ket_range = "🙂 Normal"
             else: ket_range = "⚡ Liar / Volatil"
@@ -110,13 +127,15 @@ def get_ai_status(ticker):
             return {
                 "Ticker": ticker.replace(".JK", ""),
                 "Signal": signal_label,
-                "Status": status,
+                "Risk Gap": risk_note,      # Kolom Baru
+                "Gap %": round(risk_gap_pct*100, 1), # Angka Gap
                 "Harga": current_candle['Close'],
                 "Range %": round(ai_range * 100, 2),
                 "Ket. Range": ket_range,
                 "RSI": round(rsi_val, 0),
                 "Ket. RSI": ket_rsi,
-                "Support": round(ai_support, 0),
+                "Support AI": round(ai_support, 0),
+                "Low Klasik": round(classic_low, 0), # Data Low Klasik
                 "Resistance": round(ai_resistance, 0),
                 "Data": recent
             }
@@ -128,11 +147,9 @@ def plot_chart(data_dict):
     df = data_dict['Data']
     ticker = data_dict['Ticker']
     signal = data_dict['Signal']
-    ket_range = data_dict['Ket. Range']
-    ket_rsi = data_dict['Ket. RSI']
-    sup = data_dict['Support']
-    res = data_dict['Resistance']
-    price = data_dict['Harga']
+    risk_note = data_dict['Risk Gap']
+    gap_val = data_dict['Gap %']
+    low_classic = data_dict['Low Klasik']
     
     mc = mpf.make_marketcolors(up='g', down='r', inherit=True)
     s = mpf.make_mpf_style(base_mpf_style='yahoo', marketcolors=mc)
@@ -144,64 +161,37 @@ def plot_chart(data_dict):
     ]
     
     buf = io.BytesIO()
-    title_text = f"{ticker} [{signal}] | {ket_range} | {ket_rsi}"
+    title_text = f"{ticker} [{signal}] - Risk Gap: {gap_val}%"
     
     fig, ax = mpf.plot(
         df, type='candle', style=s, title=title_text, volume=True,
         addplot=rsi_lines, mav=(20),
-        hlines=dict(hlines=[sup, res], colors=['b','b'], linestyle='-.', linewidths=(1.5,1.5)),
+        # Tampilkan Garis AI (Biru) DAN Garis Klasik (Merah Putus)
+        hlines=dict(hlines=[data_dict['Support AI'], data_dict['Resistance'], low_classic], 
+                    colors=['b','b', 'r'], 
+                    linestyle=['-.', '-.', ':'], # Klasik pakai titik-titik merah
+                    linewidths=(1.5, 1.5, 1.0)), 
         panel_ratios=(6,2,2),
         savefig=dict(fname=buf, dpi=100, bbox_inches='tight'),
         returnfig=True
     )
     st.pyplot(fig)
 
-    # --- BAGIAN PENJELASAN NARATIF (AI INTERPRETATION) ---
-    # Logika teks berdasarkan Signal Ranking
-    
     with st.container():
-        st.markdown(f"#### 📝 Analisis Strategi untuk {ticker}")
-        
-        if "🥇" in signal:
-            st.success(f"""
-            **KESIMPULAN: STRONG REVERSAL (GOLDEN SETUP)**
-            Saham ini sangat istimewa. AI mendeteksi pola **SPRING** (Jebakan Bandar) di mana harga sempat menusuk Support AI ({sup:,.0f}) tapi berhasil naik kembali. 
-            Ditambah RSI yang kondusif, ini adalah sinyal akumulasi yang sangat kuat.
-            * **Saran:** Entry Buy agresif namun terukur. Pasang Stop Loss ketat di bawah ekor candle terakhir.
-            """)
-        
-        elif "⭐" in signal:
-            st.success(f"""
-            **KESIMPULAN: BEST PRICE (RISIKO MINIM)**
-            Harga saat ini ({price:,.0f}) berada sangat dekat dengan **Support Kuat** ({sup:,.0f}). Jarak ke lantai kurang dari 10%.
-            Ini adalah titik masuk terbaik dengan risiko kerugian yang sangat kecil (*Low Risk, High Reward*).
-            * **Saran:** Cicil beli dalam jumlah besar di area ini.
-            """)
-            
-        elif "✅" in signal:
-            st.info(f"""
-            **KESIMPULAN: ACCUMULATION ZONE**
-            Harga berada dalam zona beli yang wajar. Meskipun sudah naik sedikit dari dasar, namun masih dalam fase akumulasi (belum terbang tinggi).
-            Kondisi pasar: **{ket_range}**.
-            * **Saran:** Boleh masuk (Buy), tapi jangan *All in*. Siapkan peluru cadangan jika harga turun lagi ke {sup:,.0f}.
-            """)
-            
-        elif "⚠️" in signal:
+        # Logika Penjelasan Risk Gap
+        if gap_val > 3.0:
             st.warning(f"""
-            **KESIMPULAN: RAWAN KOREKSI (RESISTANCE)**
-            Harga ({price:,.0f}) sudah mendekati atap/resistance di {res:,.0f}.
-            Biasanya di area ini banyak trader yang jualan (*Take Profit*).
-            * **Saran:** Jangan beli sekarang. Tunggu Breakout (tembus {res:,.0f} dengan volume besar) atau tunggu koreksi ke bawah.
+            **⚠️ PERINGATAN RISIKO (GAP DETECTED)**
+            Terdapat jarak sebesar **{gap_val}%** antara Support AI ({data_dict['Support AI']:,.0f}) dan Support Klasik Terbawah ({low_classic:,.0f}).
+            * **Analisis:** Jika harga jebol garis biru, ada risiko harga ditarik jatuh ke garis merah putus-putus.
+            * **Saran:** Jangan *All-in*. Tunggu pantulan (rebound) yang valid di garis biru, atau pasang bid antrian di garis merah.
             """)
-            
         else:
-            st.write(f"""
-            **KESIMPULAN: WAIT AND SEE**
-            Harga berada di tengah-tengah ("No Man's Land"). Tidak murah, tidak mahal.
-            Indikator menunjukkan kondisi: **{ket_rsi}**.
-            * **Saran:** Cari saham lain yang sinyalnya lebih jelas.
+            st.success(f"""
+            **✅ STRUKTUR SUPPORT KUAT**
+            Jarak antara Support AI dan Low Klasik sangat tipis (**{gap_val}%**). 
+            Ini menandakan area demand yang padat dan solid. Risiko jebakan "False Break" yang dalam relatif kecil.
             """)
-            
     st.divider()
 
 # --- FRONTEND ---
@@ -213,7 +203,7 @@ if tombol_scan:
     st_text = st.empty()
     
     for i, t in enumerate(tickers):
-        st_text.text(f"Menganalisis: {t}...")
+        st_text.text(f"Analisis Risiko Gap: {t}...")
         res = get_ai_status(t)
         if res:
             results.append(res)
@@ -226,7 +216,6 @@ if tombol_scan:
 
 if st.session_state['status_scan'] and st.session_state['hasil_scan']:
     results = st.session_state['hasil_scan']
-    
     df_res = pd.DataFrame(results)
     
     # Priority Sorting
@@ -241,15 +230,10 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
     df_res = df_res.sort_values(by='Priority')
     
     golden_count = len(df_res[df_res['Signal'].str.contains('🥇')])
-    strong_buy_count = len(df_res[df_res['Signal'].str.contains('⭐')])
-
     if golden_count > 0:
         st.balloons()
         st.success(f"DITEMUKAN {golden_count} SAHAM GOLDEN SETUP!")
-    elif strong_buy_count > 0:
-        st.success(f"Ditemukan {strong_buy_count} saham STRONG BUY (Sangat Dekat Support).")
 
-    # Styling
     def color_signal(val):
         color = 'white'
         if '🥇' in val: color = '#ffd700'
@@ -258,22 +242,27 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
         elif '⚠️' in val: color = '#FFB6C1'
         return f'background-color: {color}; color: black; font-weight: bold'
 
+    # Warna Warning untuk Risk Gap
+    def color_risk(val):
+        if '⚠️' in val: return 'color: red; font-weight: bold;'
+        return 'color: green;'
+
     cols_order = [
-        'Ticker', 'Signal', 'Status', 
-        'Harga', 'Support', 'Resistance',
-        'Range %', 'Ket. Range',
-        'RSI', 'Ket. RSI'
+        'Ticker', 'Signal', 'Risk Gap', 'Gap %', # Kolom Baru
+        'Harga', 'Support AI', 'Low Klasik',     # Bandingkan AI vs Klasik
+        'Range %', 'RSI'
     ]
     
     df_display = df_res[cols_order]
     
     st.dataframe(
-        df_display.style.map(color_signal, subset=['Signal']), 
+        df_display.style.map(color_signal, subset=['Signal']).map(color_risk, subset=['Risk Gap']), 
         use_container_width=True,
         column_config={
             "Harga": st.column_config.NumberColumn(format="Rp %d"),
-            "Support": st.column_config.NumberColumn(format="Rp %d"),
-            "Resistance": st.column_config.NumberColumn(format="Rp %d"),
+            "Support AI": st.column_config.NumberColumn(format="Rp %d"),
+            "Low Klasik": st.column_config.NumberColumn(format="Rp %d"),
+            "Gap %": st.column_config.NumberColumn(format="%.1f %%"),
             "Range %": st.column_config.NumberColumn(format="%.2f %%"),
             "RSI": st.column_config.NumberColumn(format="%.0f"),
         }
@@ -287,18 +276,13 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
         if pilihan:
             data = next(x for x in results if x['Ticker'] == pilihan)
             plot_chart(data)
-            
     elif mode == "Top Priority Only":
         top_results = [r for r in results if ('🥇' in r['Signal'] or '⭐' in r['Signal'])]
         if top_results:
-            for r in top_results:
-                plot_chart(r)
-        else:
-            st.warning("Tidak ada saham Golden atau Strong Buy saat ini.")
-            
+            for r in top_results: plot_chart(r)
+        else: st.warning("Tidak ada saham prioritas.")
     else: 
-        for r in results:
-            plot_chart(r)
+        for r in results: plot_chart(r)
 
 elif st.session_state['status_scan']:
     st.warning("Tidak ditemukan saham yang sesuai parameter.")
