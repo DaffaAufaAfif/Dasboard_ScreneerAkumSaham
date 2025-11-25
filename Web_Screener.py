@@ -10,12 +10,12 @@ from sklearn.cluster import KMeans
 warnings.filterwarnings("ignore")
 
 # --- KONFIGURASI ---
-st.set_page_config(layout="wide", page_title="Screener Saham The Golden Setup")
+st.set_page_config(layout="wide", page_title="Screener Saham Smart Table")
 
-st.title("🏆 Dashboard Sniper Saham (Smart Analysis)")
+st.title("🏆 Dashboard Sniper Saham (Smart Table)")
 st.markdown("""
-Mendeteksi fase akumulasi dengan fitur **AI-Explanation**. 
-Aplikasi akan menjelaskan arti grafik dan memberikan kesimpulan strategi secara otomatis.
+Mendeteksi fase akumulasi dengan fitur **Auto-Interpretasi**. 
+Lihat kolom **'Keterangan'** untuk membaca kondisi pasar dalam bahasa manusia.
 """)
 
 if 'hasil_scan' not in st.session_state:
@@ -55,10 +55,24 @@ def calculate_dynamic_snr(df):
     return centers[0], centers[1]
 
 def detect_golden_setup(row, ai_support):
-    # Logika The Golden Setup: Low tembus support, Close balik ke atas support + RSI Kondusif
     is_spring = (row['Low'] < ai_support) and (row['Close'] > ai_support * 0.995)
     is_rsi_good = (row['RSI'] > 30) and (row['RSI'] < 60)
     return is_spring and is_rsi_good
+
+# --- FUNGSI BARU: PENERJEMAH DATA ---
+def get_interpretation(range_pct, rsi_val):
+    # 1. Terjemahkan Range (Ketenangan)
+    if range_pct <= 0.15: range_desc = "Sangat Tenang"
+    elif range_pct <= 0.25: range_desc = "Normal"
+    else: range_desc = "Liar/Volatil"
+    
+    # 2. Terjemahkan RSI (Tenaga)
+    if rsi_val < 30: rsi_desc = "Oversold (Murah)"
+    elif rsi_val < 45: rsi_desc = "Mulai Bangkit"
+    elif rsi_val > 70: rsi_desc = "Overbought (Mahal)"
+    else: rsi_desc = "Netral"
+    
+    return f"{range_desc} & {rsi_desc}"
 
 def get_ai_status(ticker):
     try:
@@ -83,7 +97,7 @@ def get_ai_status(ticker):
             
             if is_golden:
                 status = "✨ GOLDEN SETUP"
-                signal_label = "🏆 GOLDEN SETUP"
+                signal_label = "🏆 GOLDEN"
             elif -0.05 <= pos <= 0.25:
                 status = "BUY ZONE (Support)"
                 signal_label = "✅ BUY"
@@ -94,13 +108,17 @@ def get_ai_status(ticker):
                 status = "SIDEWAYS"
                 signal_label = "💤 WAIT"
             
+            # Panggil fungsi interpretasi
+            keterangan_text = get_interpretation(ai_range, current_candle['RSI'])
+            
             return {
                 "Ticker": ticker.replace(".JK", ""),
                 "Signal": signal_label,
                 "Status": status,
+                "Keterangan": keterangan_text, # Kolom Baru
                 "Harga": current_candle['Close'],
                 "Range %": round(ai_range * 100, 2),
-                "RSI": round(current_candle['RSI'], 2),
+                "RSI": round(current_candle['RSI'], 0), # Bulatkan biar rapi
                 "Support": ai_support,
                 "Resistance": ai_resistance,
                 "Data": recent
@@ -113,10 +131,7 @@ def plot_chart(data_dict):
     df = data_dict['Data']
     ticker = data_dict['Ticker']
     signal = data_dict['Signal']
-    sup = data_dict['Support']
-    res = data_dict['Resistance']
-    rsi_val = data_dict['RSI']
-    price = data_dict['Harga']
+    keterangan = data_dict['Keterangan']
     
     mc = mpf.make_marketcolors(up='g', down='r', inherit=True)
     s = mpf.make_mpf_style(base_mpf_style='yahoo', marketcolors=mc)
@@ -128,59 +143,21 @@ def plot_chart(data_dict):
     ]
     
     buf = io.BytesIO()
-    title_text = f"{ticker} [{signal}]"
+    # Judul chart ditambah keterangan singkat
+    title_text = f"{ticker} [{signal}] - {keterangan}"
     
     fig, ax = mpf.plot(
         df, type='candle', style=s, title=title_text, volume=True,
         addplot=rsi_lines, mav=(20),
-        hlines=dict(hlines=[sup, res], colors=['b','b'], linestyle='-.', linewidths=(1.5,1.5)),
+        hlines=dict(hlines=[data_dict['Support'], data_dict['Resistance']], colors=['b','b'], linestyle='-.', linewidths=(1.5,1.5)),
         panel_ratios=(6,2,2),
         savefig=dict(fname=buf, dpi=100, bbox_inches='tight'),
         returnfig=True
     )
     st.pyplot(fig)
 
-    # --- BAGIAN PENJELASAN (INTERPRETASI AI) ---
     with st.container():
-        st.markdown(f"#### 📝 Analisis AI untuk {ticker}")
-        
-        # 1. Penjelasan Sinyal (Kesimpulan)
-        if "🏆" in signal:
-            st.success(f"""
-            **KESIMPULAN: STRONG BUY (REVERSAL)**
-            Saham ini membentuk pola **SPRING**. Harga sempat turun menjebol Support AI ({sup:,.0f}) untuk memancing panic selling, tapi berhasil ditutup naik kembali. 
-            Ini adalah jejak **Smart Money** yang melakukan akumulasi di harga bawah.
-            """)
-        elif "✅" in signal:
-            st.info(f"""
-            **KESIMPULAN: BUY ON WEAKNESS (AKUMULASI)**
-            Harga saat ini ({price:,.0f}) berada di **Zona Support AI** ({sup:,.0f}). 
-            Ini adalah area beli yang aman dengan risiko rendah. Strategi yang disarankan: **Cicil Beli Bertahap**.
-            """)
-        elif "⚠️" in signal:
-            st.warning(f"""
-            **KESIMPULAN: WATCH FOR BREAKOUT**
-            Harga mendekati **Resistance AI** ({res:,.0f}). Jangan buru-buru beli. 
-            Tunggu sampai harga berhasil menembus resistance dengan volume besar (Breakout) baru ikutan beli.
-            """)
-        else:
-            st.write(f"""
-            **KESIMPULAN: WAIT AND SEE**
-            Harga berada di tengah-tengah rentang konsolidasi ("No Man's Land"). Rasio Risk/Reward kurang menarik.
-            Tunggu harga turun ke {sup:,.0f} atau naik menembus {res:,.0f}.
-            """)
-
-        # 2. Legenda Singkat (Expander agar rapi)
-        with st.expander("📖 Cara Membaca Grafik Ini"):
-            st.markdown(f"""
-            * **Candlestick:** Menunjukkan pergerakan harga harian.
-            * **Garis Putus-putus Biru (Bawah):** Support Kuat AI. Area di mana pembeli biasanya masuk.
-            * **Garis Putus-putus Biru (Atas):** Resistance AI. Area di mana penjual biasanya menekan harga.
-            * **Grafik Ungu (Bawah):** Indikator RSI ({rsi_val}).
-                * Jika RSI < 30: Jenuh Jual (Murah).
-                * Jika RSI > 70: Jenuh Beli (Mahal).
-                * Jika RSI naik saat harga turun: Sinyal Divergence (Bagus).
-            """)
+        st.info(f"💡 **ARTIKEL GRAFIK:** Saham ini dalam kondisi **{keterangan}**. RSI di angka {data_dict['RSI']}, dan harga {data_dict['Status']}.")
     st.divider()
 
 # --- FRONTEND ---
@@ -192,7 +169,7 @@ if tombol_scan:
     st_text = st.empty()
     
     for i, t in enumerate(tickers):
-        st_text.text(f"Menganalisis: {t}...")
+        st_text.text(f"Analisis & Interpretasi: {t}...")
         res = get_ai_status(t)
         if res:
             results.append(res)
@@ -215,7 +192,7 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
         st.balloons()
         st.success(f"DITEMUKAN {golden_count} SAHAM GOLDEN SETUP!")
 
-    # Tabel
+    # Format Tabel dengan Warna
     def color_signal(val):
         color = 'white'
         if '🏆' in val: color = '#ffd700'
@@ -223,8 +200,18 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
         elif '⚠️' in val: color = '#ffcccb'
         return f'background-color: {color}; color: black; font-weight: bold'
 
+    # Hapus kolom Data & Priority agar tabel bersih
     df_display = df_res.drop(columns=['Data', 'Priority'])
-    st.dataframe(df_display.style.map(color_signal, subset=['Signal']), use_container_width=True)
+    
+    # Tampilkan Tabel
+    st.dataframe(
+        df_display.style.map(color_signal, subset=['Signal']), 
+        use_container_width=True,
+        column_config={
+            "Harga": st.column_config.NumberColumn(format="Rp %d"),
+            "Range %": st.column_config.NumberColumn(format="%.2f %%"),
+        }
+    )
     st.divider()
     
     mode = st.radio("Mode Lihat Chart:", ["Manual Pilih", "Semua Golden Setup", "Semua Hasil"], horizontal=True)
@@ -233,18 +220,18 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
         pilihan = st.selectbox("Pilih Saham:", [r['Ticker'] for r in results])
         if pilihan:
             data = next(x for x in results if x['Ticker'] == pilihan)
-            plot_chart(data) # Chart + Penjelasan akan muncul
+            plot_chart(data)
             
     elif mode == "Semua Golden Setup":
         golden_results = [r for r in results if "🏆" in r['Signal']]
         if golden_results:
-            for r in golden_results: # Tidak pakai kolom (1 per baris) agar penjelasan terbaca jelas
+            for r in golden_results:
                 plot_chart(r)
         else:
             st.warning("Tidak ada Golden Setup.")
             
-    else: # Semua Hasil
-        for r in results: # Tampilkan satu per satu ke bawah agar tidak sempit
+    else: 
+        for r in results:
             plot_chart(r)
 
 elif st.session_state['status_scan']:
