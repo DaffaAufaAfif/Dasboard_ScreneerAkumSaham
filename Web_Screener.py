@@ -10,12 +10,12 @@ from sklearn.cluster import KMeans
 warnings.filterwarnings("ignore")
 
 # --- KONFIGURASI ---
-st.set_page_config(layout="wide", page_title="Screener Saham Pro Edition")
+st.set_page_config(layout="wide", page_title="Screener Saham Clean Layout")
 
-st.title("🏆 Dashboard Sniper Saham (Pro Edition)")
+st.title("🏆 Dashboard Sniper Saham (Clean Layout)")
 st.markdown("""
-Mendeteksi fase akumulasi dengan **Format Data Profesional**. 
-Kolom Keterangan terpisah dan format harga dalam Rupiah yang rapi.
+Mendeteksi fase akumulasi dengan **Tata Letak Optimal**. 
+Kolom Harga dikelompokkan dengan Support/Resistance, dan format angka disederhanakan.
 """)
 
 if 'hasil_scan' not in st.session_state:
@@ -93,7 +93,6 @@ def get_ai_status(ticker):
                 status = "SIDEWAYS"
                 signal_label = "💤 WAIT"
             
-            # --- LOGIKA KETERANGAN DETAIL ---
             if ai_range <= 0.15: ket_range = "😴 Tidur / Kalem"
             elif ai_range <= 0.25: ket_range = "🙂 Normal"
             else: ket_range = "⚡ Liar / Volatil"
@@ -113,8 +112,8 @@ def get_ai_status(ticker):
                 "Ket. Range": ket_range,
                 "RSI": round(rsi_val, 0),
                 "Ket. RSI": ket_rsi,
-                "Support": round(ai_support, 0),      # Dibulatkan di data
-                "Resistance": round(ai_resistance, 0),# Dibulatkan di data
+                "Support": round(ai_support, 0),
+                "Resistance": round(ai_resistance, 0),
                 "Data": recent
             }
     except:
@@ -163,7 +162,7 @@ if tombol_scan:
     st_text = st.empty()
     
     for i, t in enumerate(tickers):
-        st_text.text(f"Analisis Detail: {t}...")
+        st_text.text(f"Analisis & Penataan Layout: {t}...")
         res = get_ai_status(t)
         if res:
             results.append(res)
@@ -179,7 +178,6 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
     
     df_res = pd.DataFrame(results)
     
-    # Sorting Prioritas
     df_res['Priority'] = df_res['Signal'].apply(lambda x: 0 if '🏆' in x else (1 if '✅' in x else 2))
     df_res = df_res.sort_values(by='Priority')
     
@@ -195,24 +193,26 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
         elif '⚠️' in val: color = '#ffcccb'
         return f'background-color: {color}; color: black; font-weight: bold'
 
+    # --- PERUBAHAN TATA LETAK KOLOM DI SINI ---
     cols_order = [
-        'Ticker', 'Signal', 'Status', 'Harga', 
-        'Range %', 'Ket. Range',
-        'RSI', 'Ket. RSI',
-        'Support', 'Resistance'
+        'Ticker', 'Signal', 'Status', 
+        'Harga', 'Support', 'Resistance',  # KELOMPOK HARGA (Rupiah)
+        'Range %', 'Ket. Range',           # KELOMPOK RANGE
+        'RSI', 'Ket. RSI'                  # KELOMPOK RSI
     ]
     
     df_display = df_res[cols_order]
     
+    # --- CONFIG FORMAT ANGKA ---
     st.dataframe(
         df_display.style.map(color_signal, subset=['Signal']), 
         use_container_width=True,
         column_config={
             "Harga": st.column_config.NumberColumn(format="Rp %d"),
+            "Support": st.column_config.NumberColumn(format="Rp %d"),      # Rupiah
+            "Resistance": st.column_config.NumberColumn(format="Rp %d"),   # Rupiah
             "Range %": st.column_config.NumberColumn(format="%.2f %%"),
-            # FORMAT BARU: Support & Resistance pakai Rupiah
-            "Support": st.column_config.NumberColumn(format="Rp %d"),
-            "Resistance": st.column_config.NumberColumn(format="Rp %d")
+            "RSI": st.column_config.NumberColumn(format="%.0f"),           # Angka Bulat (Tanpa Desimal)
         }
     )
     st.divider()
