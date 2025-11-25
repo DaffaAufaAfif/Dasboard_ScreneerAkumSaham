@@ -10,12 +10,12 @@ from sklearn.cluster import KMeans
 warnings.filterwarnings("ignore")
 
 # --- KONFIGURASI ---
-st.set_page_config(layout="wide", page_title="Screener Saham Clean Layout")
+st.set_page_config(layout="wide", page_title="Screener Saham Ranked Edition")
 
-st.title("🏆 Dashboard Sniper Saham (Clean Layout)")
+st.title("🏆 Dashboard Sniper Saham (Ranked Priority)")
 st.markdown("""
-Mendeteksi fase akumulasi dengan **Tata Letak Optimal**. 
-Kolom Harga dikelompokkan dengan Support/Resistance, dan format angka disederhanakan.
+Mendeteksi fase akumulasi dengan **Ranking Prioritas Beli**. 
+Sinyal dibedakan menjadi **Golden**, **Strong Buy**, dan **Buy** berdasarkan jarak ke support.
 """)
 
 if 'hasil_scan' not in st.session_state:
@@ -32,7 +32,7 @@ st.sidebar.subheader("Parameter")
 period_days = st.sidebar.slider("Periode Data", 30, 90, 60)
 max_range_pct = st.sidebar.slider("Max Range (%)", 5, 30, 25) / 100
 
-tombol_scan = st.sidebar.button("🚀 Cari Golden Setup", type="primary")
+tombol_scan = st.sidebar.button("🚀 Cari Sinyal Prioritas", type="primary")
 
 # --- FUNGSI LOGIKA ---
 
@@ -74,17 +74,22 @@ def get_ai_status(ticker):
         ai_range = (ai_resistance - ai_support) / ai_support
         
         if ai_range <= max_range_pct:
+            # Posisi Harga (0 = Support, 1 = Resistance)
             pos = (current_candle['Close'] - ai_support) / (ai_resistance - ai_support)
             is_golden = detect_golden_setup(current_candle, ai_support)
             
             status = ""
             signal_label = "NETRAL"
             
+            # --- LOGIKA PRIORITAS BARU ---
             if is_golden:
                 status = "✨ GOLDEN SETUP"
-                signal_label = "🏆 GOLDEN"
-            elif -0.05 <= pos <= 0.25:
-                status = "BUY ZONE (Support)"
+                signal_label = "🥇 GOLDEN"
+            elif pos <= 0.10: # Sangat dekat dengan support (0% - 10% dari lantai)
+                status = "STRONG BUY (Best Price)"
+                signal_label = "⭐ STRONG BUY"
+            elif pos <= 0.25: # Masih di area support (10% - 25% dari lantai)
+                status = "BUY ZONE (Accumulation)"
                 signal_label = "✅ BUY"
             elif 0.85 <= pos <= 1.05:
                 status = "POTENSI BREAKOUT"
@@ -98,9 +103,9 @@ def get_ai_status(ticker):
             else: ket_range = "⚡ Liar / Volatil"
 
             rsi_val = current_candle['RSI']
-            if rsi_val < 30: ket_rsi = "🟢 Oversold (Jenuh Jual)"
+            if rsi_val < 30: ket_rsi = "🟢 Oversold"
             elif rsi_val < 45: ket_rsi = "📈 Mulai Bangkit"
-            elif rsi_val > 70: ket_rsi = "🔴 Overbought (Jenuh Beli)"
+            elif rsi_val > 70: ket_rsi = "🔴 Overbought"
             else: ket_rsi = "⚪ Netral"
 
             return {
@@ -162,7 +167,7 @@ if tombol_scan:
     st_text = st.empty()
     
     for i, t in enumerate(tickers):
-        st_text.text(f"Analisis & Penataan Layout: {t}...")
+        st_text.text(f"Mengukur Kualitas Sinyal: {t}...")
         res = get_ai_status(t)
         if res:
             results.append(res)
@@ -178,46 +183,59 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
     
     df_res = pd.DataFrame(results)
     
-    df_res['Priority'] = df_res['Signal'].apply(lambda x: 0 if '🏆' in x else (1 if '✅' in x else 2))
+    # --- LOGIKA SORTING PRIORITAS YANG BARU ---
+    # 0 = Golden, 1 = Strong Buy, 2 = Buy, 3 = Breakout, 4 = Wait
+    def assign_priority(sig):
+        if '🥇' in sig: return 0
+        if '⭐' in sig: return 1
+        if '✅' in sig: return 2
+        if '⚠️' in sig: return 3
+        return 4
+
+    df_res['Priority'] = df_res['Signal'].apply(assign_priority)
     df_res = df_res.sort_values(by='Priority')
     
-    golden_count = len(df_res[df_res['Signal'].str.contains('🏆')])
+    golden_count = len(df_res[df_res['Signal'].str.contains('🥇')])
+    strong_buy_count = len(df_res[df_res['Signal'].str.contains('⭐')])
+
     if golden_count > 0:
         st.balloons()
         st.success(f"DITEMUKAN {golden_count} SAHAM GOLDEN SETUP!")
+    elif strong_buy_count > 0:
+        st.success(f"Ditemukan {strong_buy_count} saham STRONG BUY (Sangat Dekat Support).")
 
+    # --- KONFIGURASI WARNA BARU ---
     def color_signal(val):
         color = 'white'
-        if '🏆' in val: color = '#ffd700'
-        elif '✅' in val: color = '#90ee90'
-        elif '⚠️' in val: color = '#ffcccb'
+        if '🥇' in val: color = '#ffd700' # Emas
+        elif '⭐' in val: color = '#7CFC00' # Lawn Green (Hijau Terang) - Best Price
+        elif '✅' in val: color = '#98FB98' # Pale Green - Standard Buy
+        elif '⚠️' in val: color = '#FFB6C1' # Light Pink - Hati-hati
         return f'background-color: {color}; color: black; font-weight: bold'
 
-    # --- PERUBAHAN TATA LETAK KOLOM DI SINI ---
     cols_order = [
         'Ticker', 'Signal', 'Status', 
-        'Harga', 'Support', 'Resistance',  # KELOMPOK HARGA (Rupiah)
-        'Range %', 'Ket. Range',           # KELOMPOK RANGE
-        'RSI', 'Ket. RSI'                  # KELOMPOK RSI
+        'Harga', 'Support', 'Resistance',
+        'Range %', 'Ket. Range',
+        'RSI', 'Ket. RSI'
     ]
     
     df_display = df_res[cols_order]
     
-    # --- CONFIG FORMAT ANGKA ---
     st.dataframe(
         df_display.style.map(color_signal, subset=['Signal']), 
         use_container_width=True,
         column_config={
             "Harga": st.column_config.NumberColumn(format="Rp %d"),
-            "Support": st.column_config.NumberColumn(format="Rp %d"),      # Rupiah
-            "Resistance": st.column_config.NumberColumn(format="Rp %d"),   # Rupiah
+            "Support": st.column_config.NumberColumn(format="Rp %d"),
+            "Resistance": st.column_config.NumberColumn(format="Rp %d"),
             "Range %": st.column_config.NumberColumn(format="%.2f %%"),
-            "RSI": st.column_config.NumberColumn(format="%.0f"),           # Angka Bulat (Tanpa Desimal)
+            "RSI": st.column_config.NumberColumn(format="%.0f"),
         }
     )
     st.divider()
     
-    mode = st.radio("Mode Lihat Chart:", ["Manual Pilih", "Semua Golden Setup", "Semua Hasil"], horizontal=True)
+    mode = st.radio("Mode Lihat Chart:", ["Manual Pilih", "Top Priority Only", "Semua Hasil"], horizontal=True)
     
     if mode == "Manual Pilih":
         pilihan = st.selectbox("Pilih Saham:", [r['Ticker'] for r in results])
@@ -225,13 +243,14 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
             data = next(x for x in results if x['Ticker'] == pilihan)
             plot_chart(data)
             
-    elif mode == "Semua Golden Setup":
-        golden_results = [r for r in results if "🏆" in r['Signal']]
-        if golden_results:
-            for r in golden_results:
+    elif mode == "Top Priority Only":
+        # Tampilkan Golden dan Strong Buy saja
+        top_results = [r for r in results if ('🥇' in r['Signal'] or '⭐' in r['Signal'])]
+        if top_results:
+            for r in top_results:
                 plot_chart(r)
         else:
-            st.warning("Tidak ada Golden Setup.")
+            st.warning("Tidak ada saham Golden atau Strong Buy saat ini.")
             
     else: 
         for r in results:
