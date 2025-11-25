@@ -10,12 +10,12 @@ from sklearn.cluster import KMeans
 warnings.filterwarnings("ignore")
 
 # --- KONFIGURASI ---
-st.set_page_config(layout="wide", page_title="Screener Saham Smart Table")
+st.set_page_config(layout="wide", page_title="Screener Saham Detail Edition")
 
-st.title("🏆 Dashboard Sniper Saham (Smart Table)")
+st.title("🏆 Dashboard Sniper Saham (Detail Edition)")
 st.markdown("""
-Mendeteksi fase akumulasi dengan fitur **Auto-Interpretasi**. 
-Lihat kolom **'Keterangan'** untuk membaca kondisi pasar dalam bahasa manusia.
+Mendeteksi fase akumulasi dengan **Keterangan Terpisah**. 
+Kolom keterangan ditempatkan tepat di sebelah indikatornya untuk kemudahan analisis.
 """)
 
 if 'hasil_scan' not in st.session_state:
@@ -59,21 +59,6 @@ def detect_golden_setup(row, ai_support):
     is_rsi_good = (row['RSI'] > 30) and (row['RSI'] < 60)
     return is_spring and is_rsi_good
 
-# --- FUNGSI BARU: PENERJEMAH DATA ---
-def get_interpretation(range_pct, rsi_val):
-    # 1. Terjemahkan Range (Ketenangan)
-    if range_pct <= 0.15: range_desc = "Sangat Tenang"
-    elif range_pct <= 0.25: range_desc = "Normal"
-    else: range_desc = "Liar/Volatil"
-    
-    # 2. Terjemahkan RSI (Tenaga)
-    if rsi_val < 30: rsi_desc = "Oversold (Murah)"
-    elif rsi_val < 45: rsi_desc = "Mulai Bangkit"
-    elif rsi_val > 70: rsi_desc = "Overbought (Mahal)"
-    else: rsi_desc = "Netral"
-    
-    return f"{range_desc} & {rsi_desc}"
-
 def get_ai_status(ticker):
     try:
         df = yf.download(ticker, period="6mo", progress=False, auto_adjust=True)
@@ -108,17 +93,36 @@ def get_ai_status(ticker):
                 status = "SIDEWAYS"
                 signal_label = "💤 WAIT"
             
-            # Panggil fungsi interpretasi
-            keterangan_text = get_interpretation(ai_range, current_candle['RSI'])
+            # --- LOGIKA KETERANGAN DETAIL ---
             
+            # 1. Keterangan Range
+            if ai_range <= 0.15: 
+                ket_range = "😴 Tidur / Kalem"
+            elif ai_range <= 0.25: 
+                ket_range = "🙂 Normal"
+            else: 
+                ket_range = "⚡ Liar / Volatil"
+
+            # 2. Keterangan RSI
+            rsi_val = current_candle['RSI']
+            if rsi_val < 30: 
+                ket_rsi = "🟢 Oversold (Jenuh Jual)"
+            elif rsi_val < 45: 
+                ket_rsi = "📈 Mulai Bangkit" # Area akumulasi terbaik
+            elif rsi_val > 70: 
+                ket_rsi = "🔴 Overbought (Jenuh Beli)"
+            else: 
+                ket_rsi = "⚪ Netral"
+
             return {
                 "Ticker": ticker.replace(".JK", ""),
                 "Signal": signal_label,
                 "Status": status,
-                "Keterangan": keterangan_text, # Kolom Baru
                 "Harga": current_candle['Close'],
                 "Range %": round(ai_range * 100, 2),
-                "RSI": round(current_candle['RSI'], 0), # Bulatkan biar rapi
+                "Ket. Range": ket_range, # Kolom Baru 1
+                "RSI": round(rsi_val, 0),
+                "Ket. RSI": ket_rsi,     # Kolom Baru 2
                 "Support": ai_support,
                 "Resistance": ai_resistance,
                 "Data": recent
@@ -131,7 +135,8 @@ def plot_chart(data_dict):
     df = data_dict['Data']
     ticker = data_dict['Ticker']
     signal = data_dict['Signal']
-    keterangan = data_dict['Keterangan']
+    ket_range = data_dict['Ket. Range']
+    ket_rsi = data_dict['Ket. RSI']
     
     mc = mpf.make_marketcolors(up='g', down='r', inherit=True)
     s = mpf.make_mpf_style(base_mpf_style='yahoo', marketcolors=mc)
@@ -143,8 +148,8 @@ def plot_chart(data_dict):
     ]
     
     buf = io.BytesIO()
-    # Judul chart ditambah keterangan singkat
-    title_text = f"{ticker} [{signal}] - {keterangan}"
+    # Judul chart mengambil info dari kedua keterangan
+    title_text = f"{ticker} [{signal}] | {ket_range} | {ket_rsi}"
     
     fig, ax = mpf.plot(
         df, type='candle', style=s, title=title_text, volume=True,
@@ -157,7 +162,7 @@ def plot_chart(data_dict):
     st.pyplot(fig)
 
     with st.container():
-        st.info(f"💡 **ARTIKEL GRAFIK:** Saham ini dalam kondisi **{keterangan}**. RSI di angka {data_dict['RSI']}, dan harga {data_dict['Status']}.")
+        st.info(f"💡 **ARTIKEL GRAFIK:** Saham ini tergolong **{ket_range}** dengan kondisi indikator **{ket_rsi}**.")
     st.divider()
 
 # --- FRONTEND ---
@@ -169,7 +174,7 @@ if tombol_scan:
     st_text = st.empty()
     
     for i, t in enumerate(tickers):
-        st_text.text(f"Analisis & Interpretasi: {t}...")
+        st_text.text(f"Analisis Detail: {t}...")
         res = get_ai_status(t)
         if res:
             results.append(res)
@@ -184,6 +189,8 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
     results = st.session_state['hasil_scan']
     
     df_res = pd.DataFrame(results)
+    
+    # Sorting Prioritas
     df_res['Priority'] = df_res['Signal'].apply(lambda x: 0 if '🏆' in x else (1 if '✅' in x else 2))
     df_res = df_res.sort_values(by='Priority')
     
@@ -192,7 +199,6 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
         st.balloons()
         st.success(f"DITEMUKAN {golden_count} SAHAM GOLDEN SETUP!")
 
-    # Format Tabel dengan Warna
     def color_signal(val):
         color = 'white'
         if '🏆' in val: color = '#ffd700'
@@ -200,10 +206,18 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
         elif '⚠️' in val: color = '#ffcccb'
         return f'background-color: {color}; color: black; font-weight: bold'
 
-    # Hapus kolom Data & Priority agar tabel bersih
-    df_display = df_res.drop(columns=['Data', 'Priority'])
+    # RE-ORDERING KOLOM (Penting: Mengatur urutan tampilan agar sesuai permintaan)
+    cols_order = [
+        'Ticker', 'Signal', 'Status', 'Harga', 
+        'Range %', 'Ket. Range',  # Berdampingan
+        'RSI', 'Ket. RSI',        # Berdampingan
+        'Support', 'Resistance'
+    ]
     
-    # Tampilkan Tabel
+    # Pastikan hanya kolom yang ada di cols_order yang diambil
+    # (Data dan Priority tidak ikut ditampilkan)
+    df_display = df_res[cols_order]
+    
     st.dataframe(
         df_display.style.map(color_signal, subset=['Signal']), 
         use_container_width=True,
