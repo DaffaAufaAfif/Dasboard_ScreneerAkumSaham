@@ -10,12 +10,12 @@ from sklearn.cluster import KMeans
 warnings.filterwarnings("ignore")
 
 # --- KONFIGURASI ---
-st.set_page_config(layout="wide", page_title="Screener Saham Ranked Edition")
+st.set_page_config(layout="wide", page_title="Screener Saham AI Narrative")
 
-st.title("🏆 Dashboard Sniper Saham (Ranked Priority)")
+st.title("🏆 Dashboard Sniper Saham (Full AI Narrative)")
 st.markdown("""
-Mendeteksi fase akumulasi dengan **Ranking Prioritas Beli**. 
-Sinyal dibedakan menjadi **Golden**, **Strong Buy**, dan **Buy** berdasarkan jarak ke support.
+Mendeteksi fase akumulasi dengan **Analisis Lengkap**: 
+Ranking Prioritas, Tabel Rapi, dan **Penjelasan Strategi Mendetail** di bawah grafik.
 """)
 
 if 'hasil_scan' not in st.session_state:
@@ -74,21 +74,20 @@ def get_ai_status(ticker):
         ai_range = (ai_resistance - ai_support) / ai_support
         
         if ai_range <= max_range_pct:
-            # Posisi Harga (0 = Support, 1 = Resistance)
             pos = (current_candle['Close'] - ai_support) / (ai_resistance - ai_support)
             is_golden = detect_golden_setup(current_candle, ai_support)
             
             status = ""
             signal_label = "NETRAL"
             
-            # --- LOGIKA PRIORITAS BARU ---
+            # Logika Prioritas
             if is_golden:
                 status = "✨ GOLDEN SETUP"
                 signal_label = "🥇 GOLDEN"
-            elif pos <= 0.10: # Sangat dekat dengan support (0% - 10% dari lantai)
+            elif pos <= 0.10: 
                 status = "STRONG BUY (Best Price)"
                 signal_label = "⭐ STRONG BUY"
-            elif pos <= 0.25: # Masih di area support (10% - 25% dari lantai)
+            elif pos <= 0.25: 
                 status = "BUY ZONE (Accumulation)"
                 signal_label = "✅ BUY"
             elif 0.85 <= pos <= 1.05:
@@ -131,6 +130,9 @@ def plot_chart(data_dict):
     signal = data_dict['Signal']
     ket_range = data_dict['Ket. Range']
     ket_rsi = data_dict['Ket. RSI']
+    sup = data_dict['Support']
+    res = data_dict['Resistance']
+    price = data_dict['Harga']
     
     mc = mpf.make_marketcolors(up='g', down='r', inherit=True)
     s = mpf.make_mpf_style(base_mpf_style='yahoo', marketcolors=mc)
@@ -147,58 +149,61 @@ def plot_chart(data_dict):
     fig, ax = mpf.plot(
         df, type='candle', style=s, title=title_text, volume=True,
         addplot=rsi_lines, mav=(20),
-        hlines=dict(hlines=[data_dict['Support'], data_dict['Resistance']], colors=['b','b'], linestyle='-.', linewidths=(1.5,1.5)),
+        hlines=dict(hlines=[sup, res], colors=['b','b'], linestyle='-.', linewidths=(1.5,1.5)),
         panel_ratios=(6,2,2),
         savefig=dict(fname=buf, dpi=100, bbox_inches='tight'),
         returnfig=True
     )
     st.pyplot(fig)
 
+    # --- BAGIAN PENJELASAN NARATIF (AI INTERPRETATION) ---
+    # Logika teks berdasarkan Signal Ranking
+    
     with st.container():
-        st.info(f"💡 **ARTIKEL GRAFIK:** Saham ini tergolong **{ket_range}** dengan kondisi indikator **{ket_rsi}**.")
-    st.divider()
-# --- BAGIAN PENJELASAN (INTERPRETASI AI) ---
-    with st.container():
-        st.markdown(f"#### 📝 Analisis AI untuk {ticker}")
+        st.markdown(f"#### 📝 Analisis Strategi untuk {ticker}")
         
-        # 1. Penjelasan Sinyal (Kesimpulan)
-        if "🏆" in signal:
+        if "🥇" in signal:
             st.success(f"""
-            **KESIMPULAN: STRONG BUY (REVERSAL)**
-            Saham ini membentuk pola **SPRING**. Harga sempat turun menjebol Support AI ({sup:,.0f}) untuk memancing panic selling, tapi berhasil ditutup naik kembali. 
-            Ini adalah jejak **Smart Money** yang melakukan akumulasi di harga bawah.
+            **KESIMPULAN: STRONG REVERSAL (GOLDEN SETUP)**
+            Saham ini sangat istimewa. AI mendeteksi pola **SPRING** (Jebakan Bandar) di mana harga sempat menusuk Support AI ({sup:,.0f}) tapi berhasil naik kembali. 
+            Ditambah RSI yang kondusif, ini adalah sinyal akumulasi yang sangat kuat.
+            * **Saran:** Entry Buy agresif namun terukur. Pasang Stop Loss ketat di bawah ekor candle terakhir.
             """)
+        
+        elif "⭐" in signal:
+            st.success(f"""
+            **KESIMPULAN: BEST PRICE (RISIKO MINIM)**
+            Harga saat ini ({price:,.0f}) berada sangat dekat dengan **Support Kuat** ({sup:,.0f}). Jarak ke lantai kurang dari 10%.
+            Ini adalah titik masuk terbaik dengan risiko kerugian yang sangat kecil (*Low Risk, High Reward*).
+            * **Saran:** Cicil beli dalam jumlah besar di area ini.
+            """)
+            
         elif "✅" in signal:
             st.info(f"""
-            **KESIMPULAN: BUY ON WEAKNESS (AKUMULASI)**
-            Harga saat ini ({price:,.0f}) berada di **Zona Support AI** ({sup:,.0f}). 
-            Ini adalah area beli yang aman dengan risiko rendah. Strategi yang disarankan: **Cicil Beli Bertahap**.
+            **KESIMPULAN: ACCUMULATION ZONE**
+            Harga berada dalam zona beli yang wajar. Meskipun sudah naik sedikit dari dasar, namun masih dalam fase akumulasi (belum terbang tinggi).
+            Kondisi pasar: **{ket_range}**.
+            * **Saran:** Boleh masuk (Buy), tapi jangan *All in*. Siapkan peluru cadangan jika harga turun lagi ke {sup:,.0f}.
             """)
+            
         elif "⚠️" in signal:
             st.warning(f"""
-            **KESIMPULAN: WATCH FOR BREAKOUT**
-            Harga mendekati **Resistance AI** ({res:,.0f}). Jangan buru-buru beli. 
-            Tunggu sampai harga berhasil menembus resistance dengan volume besar (Breakout) baru ikutan beli.
+            **KESIMPULAN: RAWAN KOREKSI (RESISTANCE)**
+            Harga ({price:,.0f}) sudah mendekati atap/resistance di {res:,.0f}.
+            Biasanya di area ini banyak trader yang jualan (*Take Profit*).
+            * **Saran:** Jangan beli sekarang. Tunggu Breakout (tembus {res:,.0f} dengan volume besar) atau tunggu koreksi ke bawah.
             """)
+            
         else:
             st.write(f"""
             **KESIMPULAN: WAIT AND SEE**
-            Harga berada di tengah-tengah rentang konsolidasi ("No Man's Land"). Rasio Risk/Reward kurang menarik.
-            Tunggu harga turun ke {sup:,.0f} atau naik menembus {res:,.0f}.
+            Harga berada di tengah-tengah ("No Man's Land"). Tidak murah, tidak mahal.
+            Indikator menunjukkan kondisi: **{ket_rsi}**.
+            * **Saran:** Cari saham lain yang sinyalnya lebih jelas.
             """)
-
-        # 2. Legenda Singkat (Expander agar rapi)
-        with st.expander("📖 Cara Membaca Grafik Ini"):
-            st.markdown(f"""
-            * **Candlestick:** Menunjukkan pergerakan harga harian.
-            * **Garis Putus-putus Biru (Bawah):** Support Kuat AI. Area di mana pembeli biasanya masuk.
-            * **Garis Putus-putus Biru (Atas):** Resistance AI. Area di mana penjual biasanya menekan harga.
-            * **Grafik Ungu (Bawah):** Indikator RSI ({rsi_val}).
-                * Jika RSI < 30: Jenuh Jual (Murah).
-                * Jika RSI > 70: Jenuh Beli (Mahal).
-                * Jika RSI naik saat harga turun: Sinyal Divergence (Bagus).
-            """)
+            
     st.divider()
+
 # --- FRONTEND ---
 if tombol_scan:
     tickers = [t.strip() for t in ticker_input.split(",")]
@@ -208,7 +213,7 @@ if tombol_scan:
     st_text = st.empty()
     
     for i, t in enumerate(tickers):
-        st_text.text(f"Mengukur Kualitas Sinyal: {t}...")
+        st_text.text(f"Menganalisis: {t}...")
         res = get_ai_status(t)
         if res:
             results.append(res)
@@ -224,8 +229,7 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
     
     df_res = pd.DataFrame(results)
     
-    # --- LOGIKA SORTING PRIORITAS YANG BARU ---
-    # 0 = Golden, 1 = Strong Buy, 2 = Buy, 3 = Breakout, 4 = Wait
+    # Priority Sorting
     def assign_priority(sig):
         if '🥇' in sig: return 0
         if '⭐' in sig: return 1
@@ -245,13 +249,13 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
     elif strong_buy_count > 0:
         st.success(f"Ditemukan {strong_buy_count} saham STRONG BUY (Sangat Dekat Support).")
 
-    # --- KONFIGURASI WARNA BARU ---
+    # Styling
     def color_signal(val):
         color = 'white'
-        if '🥇' in val: color = '#ffd700' # Emas
-        elif '⭐' in val: color = '#7CFC00' # Lawn Green (Hijau Terang) - Best Price
-        elif '✅' in val: color = '#98FB98' # Pale Green - Standard Buy
-        elif '⚠️' in val: color = '#FFB6C1' # Light Pink - Hati-hati
+        if '🥇' in val: color = '#ffd700'
+        elif '⭐' in val: color = '#7CFC00'
+        elif '✅' in val: color = '#98FB98'
+        elif '⚠️' in val: color = '#FFB6C1'
         return f'background-color: {color}; color: black; font-weight: bold'
 
     cols_order = [
@@ -285,7 +289,6 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
             plot_chart(data)
             
     elif mode == "Top Priority Only":
-        # Tampilkan Golden dan Strong Buy saja
         top_results = [r for r in results if ('🥇' in r['Signal'] or '⭐' in r['Signal'])]
         if top_results:
             for r in top_results:
