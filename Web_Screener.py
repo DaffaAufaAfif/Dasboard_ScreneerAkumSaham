@@ -10,12 +10,12 @@ from sklearn.cluster import KMeans
 warnings.filterwarnings("ignore")
 
 # --- KONFIGURASI HALAMAN ---
-st.set_page_config(layout="wide", page_title="Screener Saham IHSG Pro")
+st.set_page_config(layout="wide", page_title="Screener Saham Pro Transparent")
 
-st.title("💎 Dashboard Sniper Saham (IHSG Universe)")
+st.title("💎 Dashboard Sniper Saham (Pro Transparent)")
 st.markdown("""
-Mendeteksi Diamond & Golden Setup di seluruh saham likuid IHSG.
-Pilih **Grup Saham** di sebelah kiri untuk memperluas jangkauan scan.
+Mendeteksi fase akumulasi di seluruh saham likuid IHSG.
+Menampilkan data lengkap: **Keputusan, Tipe Saham, Range %, dan Risiko Gap.**
 """)
 
 if 'hasil_scan' not in st.session_state:
@@ -23,8 +23,7 @@ if 'hasil_scan' not in st.session_state:
 if 'status_scan' not in st.session_state:
     st.session_state['status_scan'] = False
 
-# --- DATABASE TIKER (HARDCODED PRESETS) ---
-# Ini daftar saham likuid agar user tidak perlu ketik manual
+# --- DATABASE PRESETS ---
 PRESETS = {
     "Manual (Ketik Sendiri)": "",
     "💎 LQ45 (Big Cap)": "ACES.JK, ADRO.JK, AKRA.JK, AMRT.JK, ANTM.JK, ARTO.JK, ASII.JK, BBCA.JK, BBNI.JK, BBRI.JK, BBTN.JK, BMRI.JK, BRIS.JK, BRPT.JK, BUKA.JK, CPIN.JK, EMTK.JK, ESSA.JK, EXCL.JK, GOTO.JK, HRUM.JK, ICBP.JK, INCO.JK, INDF.JK, INKP.JK, INTP.JK, ISAT.JK, ITMG.JK, JPFA.JK, KLBF.JK, MAPI.JK, MDKA.JK, MEDC.JK, MBMA.JK, MIKA.JK, MTEL.JK, PGAS.JK, PGEO.JK, PTBA.JK, SIDO.JK, SMGR.JK, SRTG.JK, TBIG.JK, TINS.JK, TLKM.JK, TOWR.JK, UNTR.JK, UNVR.JK",
@@ -34,24 +33,21 @@ PRESETS = {
 
 # --- SIDEBAR ---
 st.sidebar.header("⚙️ Konfigurasi Scan")
+selected_preset = st.sidebar.selectbox("Pilih Grup Saham:", list(PRESETS.keys()), index=2)
 
-# Pilihan Preset
-selected_preset = st.sidebar.selectbox("Pilih Grup Saham:", list(PRESETS.keys()), index=2) # Default Kompas100
-
-# Text Area (Otomatis terisi berdasarkan preset)
 if selected_preset == "Manual (Ketik Sendiri)":
     default_text = ""
 else:
     default_text = PRESETS[selected_preset]
 
-ticker_input = st.sidebar.text_area("Daftar Ticker (Bisa diedit)", default_text, height=150)
-st.sidebar.caption(f"Jumlah Saham terpilih: {len(ticker_input.split(',')) if ticker_input else 0}")
+ticker_input = st.sidebar.text_area("Daftar Ticker", default_text, height=150)
+st.sidebar.caption(f"Jumlah Saham: {len(ticker_input.split(',')) if ticker_input else 0}")
 
 st.sidebar.subheader("Parameter")
 period_days = st.sidebar.slider("Periode Data", 30, 90, 60)
 tombol_scan = st.sidebar.button("🚀 Mulai Scan Masal", type="primary")
 
-# --- FUNGSI LOGIKA (TETAP SAMA) ---
+# --- FUNGSI LOGIKA ---
 
 def calculate_rsi(series, period=14):
     delta = series.diff()
@@ -110,6 +106,7 @@ def get_ai_status(ticker):
         
         signal_label = "NETRAL"
         
+        # Logika Keputusan
         if gap_pct <= max_gap_allowed:
             if is_spring and rsi_good:
                 signal_label = "💎 DIAMOND"
@@ -135,10 +132,10 @@ def get_ai_status(ticker):
             "Ticker": ticker.replace(".JK", ""),
             "Keputusan": signal_label,
             "Tipe": stock_type,
+            "Range %": ai_range,  # Ini data mentahnya
             "Harga": current_candle['Close'],
             "Support AI": round(ai_support, 0),
             "Gap %": gap_pct,
-            "Range %": ai_range,
             "RSI": round(rsi_val, 0),
             "Ket. RSI": ket_rsi,
             "Data": recent,
@@ -164,7 +161,8 @@ def plot_chart(data_dict):
     ]
     
     buf = io.BytesIO()
-    title_text = f"{ticker} [{signal}] - {data_dict['Tipe']}"
+    # Judul chart menampilkan Range %
+    title_text = f"{ticker} [{signal}] - Range: {data_dict['Range %']*100:.1f}%"
     
     fig, ax = mpf.plot(
         df, type='candle', style=s, title=title_text, volume=True,
@@ -183,20 +181,19 @@ if tombol_scan:
     raw_tickers = [t.strip() for t in ticker_input.split(",") if t.strip()]
     
     if len(raw_tickers) > 200:
-        st.warning(f"⚠️ Anda menscan {len(raw_tickers)} saham. Proses ini mungkin memakan waktu > 5 menit. Mohon bersabar.")
+        st.warning(f"⚠️ Scan {len(raw_tickers)} saham sedang berjalan. Mohon tunggu...")
     
     results = []
     progress_bar = st.progress(0)
     status_text = st.empty()
     
-    # Batch Processing Logic agar tidak berat
     for i, t in enumerate(raw_tickers):
         status_text.text(f"Scanning ({i+1}/{len(raw_tickers)}): {t}...")
         res = get_ai_status(t)
         if res: results.append(res)
         progress_bar.progress((i + 1) / len(raw_tickers))
         
-    status_text.success("Scan Selesai!")
+    status_text.success("Selesai!")
     progress_bar.empty()
     st.session_state['hasil_scan'] = results
     st.session_state['status_scan'] = True
@@ -205,7 +202,6 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
     results = st.session_state['hasil_scan']
     df_res = pd.DataFrame(results)
     
-    # Sorting: Diamond & Golden Paling Atas
     def assign_priority(sig):
         if '💎' in sig: return 0
         if '🥇' in sig: return 1
@@ -218,9 +214,8 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
     diamond_count = len(df_res[df_res['Keputusan'].str.contains('💎')])
     if diamond_count > 0:
         st.balloons()
-        st.success(f"🔥 DITEMUKAN {diamond_count} DIAMOND SETUP DARI {len(results)} SAHAM!")
+        st.success(f"🔥 DITEMUKAN {diamond_count} DIAMOND SETUP!")
     
-    # Styling Table
     def color_signal(val):
         if '💎' in val: return 'background-color: #00ced1; color: white; font-weight: bold'
         if '🥇' in val: return 'background-color: #ffd700; color: black; font-weight: bold'
@@ -228,7 +223,8 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
         if '❌' in val: return 'background-color: #808080; color: white; font-weight: bold'
         return ''
 
-    cols_order = ['Ticker', 'Keputusan', 'Tipe', 'Harga', 'Support AI', 'Gap %', 'RSI', 'Ket. RSI']
+    # MENAMPILKAN KEMBALI RANGE %
+    cols_order = ['Ticker', 'Keputusan', 'Tipe', 'Range %', 'Harga', 'Support AI', 'Gap %', 'RSI', 'Ket. RSI']
     
     st.dataframe(
         df_res[cols_order].style.map(color_signal, subset=['Keputusan']), 
@@ -236,24 +232,23 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
         column_config={
             "Harga": st.column_config.NumberColumn(format="Rp %d"),
             "Support AI": st.column_config.NumberColumn(format="Rp %d"),
+            "Range %": st.column_config.NumberColumn(format="%.1f %%"), # Format 1 desimal
             "Gap %": st.column_config.NumberColumn(format="%.1f %%"),
             "RSI": st.column_config.NumberColumn(format="%.0f"),
         }
     )
     st.divider()
     
-    # Filter Chart Otomatis (Hanya Tampilkan yang Bagus)
-    st.subheader("📊 Grafik Sinyal Terbaik (Diamond & Golden)")
+    st.subheader("📊 Grafik Sinyal Terbaik")
     top_results = [r for r in results if ('💎' in r['Keputusan'] or '🥇' in r['Keputusan'])]
     
     if top_results:
-        # Tampilkan dalam Grid 2 Kolom biar hemat tempat
         cols = st.columns(2)
         for i, r in enumerate(top_results):
             with cols[i % 2]:
                 plot_chart(r)
     else:
-        st.info("Tidak ada sinyal Diamond/Golden saat ini. Cek tabel untuk sinyal Safe Buy.")
+        st.info("Belum ada Diamond/Golden setup. Cek tabel untuk Safe Buy.")
 
 elif st.session_state['status_scan']:
     st.warning("Tidak ditemukan hasil.")
