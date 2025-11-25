@@ -10,12 +10,12 @@ from sklearn.cluster import KMeans
 warnings.filterwarnings("ignore")
 
 # --- KONFIGURASI ---
-st.set_page_config(layout="wide", page_title="Screener Saham Detail Edition")
+st.set_page_config(layout="wide", page_title="Screener Saham Pro Edition")
 
-st.title("🏆 Dashboard Sniper Saham (Detail Edition)")
+st.title("🏆 Dashboard Sniper Saham (Pro Edition)")
 st.markdown("""
-Mendeteksi fase akumulasi dengan **Keterangan Terpisah**. 
-Kolom keterangan ditempatkan tepat di sebelah indikatornya untuk kemudahan analisis.
+Mendeteksi fase akumulasi dengan **Format Data Profesional**. 
+Kolom Keterangan terpisah dan format harga dalam Rupiah yang rapi.
 """)
 
 if 'hasil_scan' not in st.session_state:
@@ -94,25 +94,15 @@ def get_ai_status(ticker):
                 signal_label = "💤 WAIT"
             
             # --- LOGIKA KETERANGAN DETAIL ---
-            
-            # 1. Keterangan Range
-            if ai_range <= 0.15: 
-                ket_range = "😴 Tidur / Kalem"
-            elif ai_range <= 0.25: 
-                ket_range = "🙂 Normal"
-            else: 
-                ket_range = "⚡ Liar / Volatil"
+            if ai_range <= 0.15: ket_range = "😴 Tidur / Kalem"
+            elif ai_range <= 0.25: ket_range = "🙂 Normal"
+            else: ket_range = "⚡ Liar / Volatil"
 
-            # 2. Keterangan RSI
             rsi_val = current_candle['RSI']
-            if rsi_val < 30: 
-                ket_rsi = "🟢 Oversold (Jenuh Jual)"
-            elif rsi_val < 45: 
-                ket_rsi = "📈 Mulai Bangkit" # Area akumulasi terbaik
-            elif rsi_val > 70: 
-                ket_rsi = "🔴 Overbought (Jenuh Beli)"
-            else: 
-                ket_rsi = "⚪ Netral"
+            if rsi_val < 30: ket_rsi = "🟢 Oversold (Jenuh Jual)"
+            elif rsi_val < 45: ket_rsi = "📈 Mulai Bangkit"
+            elif rsi_val > 70: ket_rsi = "🔴 Overbought (Jenuh Beli)"
+            else: ket_rsi = "⚪ Netral"
 
             return {
                 "Ticker": ticker.replace(".JK", ""),
@@ -120,11 +110,11 @@ def get_ai_status(ticker):
                 "Status": status,
                 "Harga": current_candle['Close'],
                 "Range %": round(ai_range * 100, 2),
-                "Ket. Range": ket_range, # Kolom Baru 1
+                "Ket. Range": ket_range,
                 "RSI": round(rsi_val, 0),
-                "Ket. RSI": ket_rsi,     # Kolom Baru 2
-                "Support": ai_support,
-                "Resistance": ai_resistance,
+                "Ket. RSI": ket_rsi,
+                "Support": round(ai_support, 0),      # Dibulatkan di data
+                "Resistance": round(ai_resistance, 0),# Dibulatkan di data
                 "Data": recent
             }
     except:
@@ -148,7 +138,6 @@ def plot_chart(data_dict):
     ]
     
     buf = io.BytesIO()
-    # Judul chart mengambil info dari kedua keterangan
     title_text = f"{ticker} [{signal}] | {ket_range} | {ket_rsi}"
     
     fig, ax = mpf.plot(
@@ -206,16 +195,13 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
         elif '⚠️' in val: color = '#ffcccb'
         return f'background-color: {color}; color: black; font-weight: bold'
 
-    # RE-ORDERING KOLOM (Penting: Mengatur urutan tampilan agar sesuai permintaan)
     cols_order = [
         'Ticker', 'Signal', 'Status', 'Harga', 
-        'Range %', 'Ket. Range',  # Berdampingan
-        'RSI', 'Ket. RSI',        # Berdampingan
+        'Range %', 'Ket. Range',
+        'RSI', 'Ket. RSI',
         'Support', 'Resistance'
     ]
     
-    # Pastikan hanya kolom yang ada di cols_order yang diambil
-    # (Data dan Priority tidak ikut ditampilkan)
     df_display = df_res[cols_order]
     
     st.dataframe(
@@ -224,6 +210,9 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
         column_config={
             "Harga": st.column_config.NumberColumn(format="Rp %d"),
             "Range %": st.column_config.NumberColumn(format="%.2f %%"),
+            # FORMAT BARU: Support & Resistance pakai Rupiah
+            "Support": st.column_config.NumberColumn(format="Rp %d"),
+            "Resistance": st.column_config.NumberColumn(format="Rp %d")
         }
     )
     st.divider()
