@@ -5,16 +5,23 @@ import mplfinance as mpf
 import warnings
 import io
 import numpy as np
+import datetime as dt
+from datetime import timedelta
 from sklearn.cluster import KMeans
+from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, LSTM, Dropout
 
 warnings.filterwarnings("ignore")
 
 # --- KONFIGURASI HALAMAN ---
-st.set_page_config(layout="wide", page_title="Screener Saham Click-to-View")
+st.set_page_config(layout="wide", page_title="Maverick AI Dashboard")
 
-st.title("💎 Dashboard Sniper Saham (Interactive)")
+st.title("💎 MAVERICK AI: Integrated Trading System")
 st.markdown("""
-**Cara Pakai:** Lakukan Scan, lalu **KLIK Baris/Centang** pada tabel di bawah untuk memunculkan Grafik & Analisis Detail saham tersebut.
+**Sistem Hybrid:**
+1. **Radar (K-Means):** Screening fase akumulasi & support/resistance.
+2. **Oracle (LSTM):** Prediksi harga masa depan (Deep Learning).
 """)
 
 if 'hasil_scan' not in st.session_state:
@@ -22,52 +29,118 @@ if 'hasil_scan' not in st.session_state:
 if 'status_scan' not in st.session_state:
     st.session_state['status_scan'] = False
 
-# --- DATABASE PRESETS ---
+# --- PRESETS ---
 PRESETS = {
-    "Manual (Ketik Sendiri)": "",
-    "💎 LQ45 (Big Cap)": "ACES.JK, ADRO.JK, AKRA.JK, AMRT.JK, ANTM.JK, ARTO.JK, ASII.JK, BBCA.JK, BBNI.JK, BBRI.JK, BBTN.JK, BMRI.JK, BRIS.JK, BRPT.JK, BUKA.JK, CPIN.JK, EMTK.JK, ESSA.JK, EXCL.JK, GOTO.JK, HRUM.JK, ICBP.JK, INCO.JK, INDF.JK, INKP.JK, INTP.JK, ISAT.JK, ITMG.JK, JPFA.JK, KLBF.JK, MAPI.JK, MDKA.JK, MEDC.JK, MBMA.JK, MIKA.JK, MTEL.JK, PGAS.JK, PGEO.JK, PTBA.JK, SIDO.JK, SMGR.JK, SRTG.JK, TBIG.JK, TINS.JK, TLKM.JK, TOWR.JK, UNTR.JK, UNVR.JK",
-    "🔥 Kompas100 (Likuid & Aktif)": "ACES.JK, ADRO.JK, AKRA.JK, AMRT.JK, ANTM.JK, ARTO.JK, ASII.JK, BBCA.JK, BBNI.JK, BBRI.JK, BBTN.JK, BMRI.JK, BRIS.JK, BRPT.JK, BUKA.JK, CPIN.JK, EMTK.JK, ESSA.JK, EXCL.JK, GOTO.JK, HRUM.JK, ICBP.JK, INCO.JK, INDF.JK, INKP.JK, INTP.JK, ISAT.JK, ITMG.JK, JPFA.JK, KLBF.JK, MAPI.JK, MDKA.JK, MEDC.JK, MBMA.JK, MIKA.JK, MTEL.JK, PGAS.JK, PGEO.JK, PTBA.JK, SIDO.JK, SMGR.JK, SRTG.JK, TBIG.JK, TINS.JK, TLKM.JK, TOWR.JK, UNTR.JK, UNVR.JK, ABMM.JK, ADMR.JK, AGRO.JK, APIC.JK, ASSA.JK, AUTO.JK, AVIA.JK, BBHI.JK, BDMN.JK, BFIN.JK, BJBR.JK, BJTM.JK, BIRD.JK, BUMI.JK, CTRA.JK, DEWA.JK, DOID.JK, DSNG.JK, ELSA.JK, ENRG.JK, ERAA.JK, FREN.JK, GGRM.JK, GJTL.JK, HEAL.JK, HMSP.JK, HOKI.JK, INDY.JK, INKP.JK, JSMR.JK, KAEF.JK, KPIG.JK, LPPF.JK, LSIP.JK, MDKA.JK, MNCN.JK, MPMX.JK, MYOR.JK, PALS.JK, PANI.JK, PNLF.JK, PNBN.JK, PTBA.JK, PWON.JK, RAJA.JK, RALS.JK, SCMA.JK, SIDO.JK, SIMP.JK, SMDR.JK, SMRA.JK, TAPG.JK, TPIA.JK, WIKA.JK, WOOD.JK",
-    "🕌 Syariah Populer (JII)": "ADRO.JK, AKRA.JK, ANTM.JK, ASII.JK, BRIS.JK, BRPT.JK, CPIN.JK, ESSA.JK, EXCL.JK, HRUM.JK, ICBP.JK, INCO.JK, INDF.JK, INKP.JK, INTP.JK, ISAT.JK, ITMG.JK, JPFA.JK, KLBF.JK, MAPI.JK, MDKA.JK, MIKA.JK, PGAS.JK, PTBA.JK, SIDO.JK, SMGR.JK, TINS.JK, TLKM.JK, UNTR.JK, UNVR.JK"
+    "Manual": "",
+    "💎 LQ45": "ACES.JK, ADRO.JK, AKRA.JK, AMRT.JK, ANTM.JK, ARTO.JK, ASII.JK, BBCA.JK, BBNI.JK, BBRI.JK, BBTN.JK, BMRI.JK, BRIS.JK, BRPT.JK, BUKA.JK, CPIN.JK, EMTK.JK, ESSA.JK, EXCL.JK, GOTO.JK, HRUM.JK, ICBP.JK, INCO.JK, INDF.JK, INKP.JK, INTP.JK, ISAT.JK, ITMG.JK, JPFA.JK, KLBF.JK, MAPI.JK, MDKA.JK, MEDC.JK, MBMA.JK, MIKA.JK, MTEL.JK, PGAS.JK, PGEO.JK, PTBA.JK, SIDO.JK, SMGR.JK, SRTG.JK, TBIG.JK, TINS.JK, TLKM.JK, TOWR.JK, UNTR.JK, UNVR.JK",
+    "🔥 Kompas100": "ACES.JK, ADRO.JK, AKRA.JK, AMRT.JK, ANTM.JK, ARTO.JK, ASII.JK, BBCA.JK, BBNI.JK, BBRI.JK, BBTN.JK, BMRI.JK, BRIS.JK, BRPT.JK, BUKA.JK, CPIN.JK, EMTK.JK, ESSA.JK, EXCL.JK, GOTO.JK, HRUM.JK, ICBP.JK, INCO.JK, INDF.JK, INKP.JK, INTP.JK, ISAT.JK, ITMG.JK, JPFA.JK, KLBF.JK, MAPI.JK, MDKA.JK, MEDC.JK, MBMA.JK, MIKA.JK, MTEL.JK, PGAS.JK, PGEO.JK, PTBA.JK, SIDO.JK, SMGR.JK, SRTG.JK, TBIG.JK, TINS.JK, TLKM.JK, TOWR.JK, UNTR.JK, UNVR.JK, ABMM.JK, ADMR.JK, AGRO.JK, APIC.JK, ASSA.JK, AUTO.JK, AVIA.JK, BBHI.JK, BDMN.JK, BFIN.JK, BJBR.JK, BJTM.JK, BIRD.JK, BUMI.JK, CTRA.JK, DEWA.JK, DOID.JK, DSNG.JK, ELSA.JK, ENRG.JK, ERAA.JK, FREN.JK, GGRM.JK, GJTL.JK, HEAL.JK, HMSP.JK, HOKI.JK, INDY.JK, INKP.JK, JSMR.JK, KAEF.JK, KPIG.JK, LPPF.JK, LSIP.JK, MDKA.JK, MNCN.JK, MPMX.JK, MYOR.JK, PALS.JK, PANI.JK, PNLF.JK, PNBN.JK, PTBA.JK, PWON.JK, RAJA.JK, RALS.JK, SCMA.JK, SIDO.JK, SIMP.JK, SMDR.JK, SMRA.JK, TAPG.JK, TPIA.JK, WIKA.JK, WOOD.JK",
+    "🕌 JII Syariah": "ADRO.JK, AKRA.JK, ANTM.JK, ASII.JK, BRIS.JK, BRPT.JK, CPIN.JK, ESSA.JK, EXCL.JK, HRUM.JK, ICBP.JK, INCO.JK, INDF.JK, INKP.JK, INTP.JK, ISAT.JK, ITMG.JK, JPFA.JK, KLBF.JK, MAPI.JK, MDKA.JK, MIKA.JK, PGAS.JK, PTBA.JK, SIDO.JK, SMGR.JK, TINS.JK, TLKM.JK, UNTR.JK, UNVR.JK"
 }
 
 # --- SIDEBAR ---
-st.sidebar.header("⚙️ Konfigurasi Scan")
-selected_preset = st.sidebar.selectbox("Pilih Grup Saham:", list(PRESETS.keys()), index=2)
+st.sidebar.header("⚙️ Konfigurasi")
+selected_preset = st.sidebar.selectbox("Grup Saham:", list(PRESETS.keys()), index=2)
+default_text = PRESETS[selected_preset] if selected_preset != "Manual" else ""
+ticker_input = st.sidebar.text_area("Ticker", default_text, height=100)
+period_days = st.sidebar.slider("Periode Radar (Hari)", 30, 90, 60)
+tombol_scan = st.sidebar.button("🚀 SCAN RADAR (K-MEANS)", type="primary")
 
-if selected_preset == "Manual (Ketik Sendiri)":
-    default_text = ""
-else:
-    default_text = PRESETS[selected_preset]
+# ==========================================
+# 🧠 FUNGSI 1: NEURAL NETWORK (LSTM MARK-2)
+# ==========================================
+def run_maverick_prediction(ticker):
+    # Konfigurasi LSTM
+    PREDICTION_DAYS = 60
+    EPOCHS = 30 # Kita set 30 biar tidak terlalu lama nunggu di web
+    
+    # Download Data Panjang (4 Tahun) untuk Belajar
+    today = dt.datetime.now()
+    tomorrow = today + timedelta(days=1)
+    start_learn = "2020-01-01"
+    end_learn = tomorrow.strftime("%Y-%m-%d")
+    
+    try:
+        data = yf.download(ticker, start=start_learn, end=end_learn, progress=False)
+        if isinstance(data.columns, pd.MultiIndex): data.columns = data.columns.droplevel(1)
+        
+        # Hitung Indikator (RSI)
+        delta = data['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).fillna(0)
+        loss = (-delta.where(delta < 0, 0)).fillna(0)
+        avg_gain = gain.rolling(window=14).mean()
+        avg_loss = loss.rolling(window=14).mean()
+        rs = avg_gain / avg_loss
+        data['RSI'] = 100 - (100 / (1 + rs))
+        data = data.dropna()
+        
+        # Siapkan Dataset (Close, Volume, RSI)
+        dataset = data[['Close', 'Volume', 'RSI']].values
+        
+        # Scaling
+        scaler_features = MinMaxScaler(feature_range=(0, 1))
+        scaled_data = scaler_features.fit_transform(dataset)
+        
+        scaler_target = MinMaxScaler(feature_range=(0, 1))
+        scaler_target.fit_transform(dataset[:, 0].reshape(-1, 1)) # Target cuma Close
+        
+        # Training Data
+        x_train, y_train = [], []
+        for i in range(PREDICTION_DAYS, len(scaled_data)):
+            x_train.append(scaled_data[i-PREDICTION_DAYS:i, :])
+            y_train.append(scaled_data[i, 0])
+            
+        x_train, y_train = np.array(x_train), np.array(y_train)
+        x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], 3))
+        
+        # Build Model (Mark-2)
+        model = Sequential()
+        model.add(LSTM(units=50, return_sequences=True, input_shape=(x_train.shape[1], 3)))
+        model.add(Dropout(0.2))
+        model.add(LSTM(units=50, return_sequences=False))
+        model.add(Dropout(0.2))
+        model.add(Dense(units=25))
+        model.add(Dense(units=1))
+        model.compile(optimizer='adam', loss='mean_squared_error')
+        
+        # Training (Silent Mode)
+        model.fit(x_train, y_train, epochs=EPOCHS, batch_size=32, verbose=0)
+        
+        # Prediksi Masa Depan
+        last_60 = data[['Close', 'Volume', 'RSI']].tail(PREDICTION_DAYS).values
+        last_60_scaled = scaler_features.transform(last_60)
+        
+        X_test = []
+        X_test.append(last_60_scaled)
+        X_test = np.array(X_test)
+        X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 3))
+        
+        pred_scaled = model.predict(X_test)
+        pred_price = scaler_target.inverse_transform(pred_scaled)
+        
+        final_price = float(pred_price[0][0])
+        last_real = data['Close'].iloc[-1]
+        
+        return final_price, last_real
+        
+    except Exception as e:
+        st.error(f"Error AI: {e}")
+        return None, None
 
-ticker_input = st.sidebar.text_area("Daftar Ticker", default_text, height=150)
-st.sidebar.caption(f"Jumlah Saham: {len(ticker_input.split(',')) if ticker_input else 0}")
-
-st.sidebar.subheader("Parameter")
-period_days = st.sidebar.slider("Periode Data", 30, 90, 60)
-tombol_scan = st.sidebar.button("🚀 Mulai Scan Masal", type="primary")
-
-# --- FUNGSI LOGIKA (Engine) ---
-
+# ==========================================
+# 📊 FUNGSI 2: SCREENER (K-MEANS)
+# ==========================================
 def calculate_rsi(series, period=14):
     delta = series.diff()
     gain = (delta.where(delta > 0, 0)).fillna(0)
     loss = (-delta.where(delta < 0, 0)).fillna(0)
-    avg_gain = gain.rolling(window=period, min_periods=1).mean()
-    avg_loss = loss.rolling(window=period, min_periods=1).mean()
-    rs = avg_gain / avg_loss
+    rs = gain.rolling(window=period).mean() / loss.rolling(window=period).mean()
     return 100 - (100 / (1 + rs))
 
 def calculate_dynamic_snr(df):
-    data_points = np.concatenate([df['Low'].values, df['High'].values, df['Close'].values])
-    data_points = data_points.reshape(-1, 1)
-    kmeans = KMeans(n_clusters=2, n_init=10, random_state=42)
-    kmeans.fit(data_points)
-    centers = kmeans.cluster_centers_.flatten()
-    centers.sort()
+    data_points = np.concatenate([df['Low'].values, df['High'].values, df['Close'].values]).reshape(-1, 1)
+    kmeans = KMeans(n_clusters=2, n_init=10, random_state=42).fit(data_points)
+    centers = sorted(kmeans.cluster_centers_.flatten())
     return centers[0], centers[1]
-
-def detect_spring_pattern(row, ai_support):
-    return (row['Low'] < ai_support) and (row['Close'] > ai_support * 0.995)
 
 def get_ai_status(ticker):
     try:
@@ -85,209 +158,135 @@ def get_ai_status(ticker):
         current_candle = recent.iloc[-1]
         ai_range = (ai_resistance - ai_support) / ai_support
         
+        # Tipe Saham
         stock_type = "Normal"
-        max_gap_allowed = 0.045
-        if ai_range <= 0.12:
-            stock_type = "🛡️ Stabil"
-            max_gap_allowed = 0.025
-        elif ai_range <= 0.22:
-            stock_type = "⚖️ Moderat"
-            max_gap_allowed = 0.045
-        else:
-            stock_type = "🔥 Agresif"
-            max_gap_allowed = 0.07
+        max_gap = 0.045
+        if ai_range <= 0.12: stock_type, max_gap = "🛡️ Stabil", 0.025
+        elif ai_range > 0.22: stock_type, max_gap = "🔥 Agresif", 0.07
 
         pos = (current_candle['Close'] - ai_support) / (ai_resistance - ai_support)
-        is_spring = detect_spring_pattern(current_candle, ai_support)
-        rsi_good = (current_candle['RSI'] > 30) and (current_candle['RSI'] < 65)
+        is_spring = (current_candle['Low'] < ai_support) and (current_candle['Close'] > ai_support * 0.995)
+        rsi_good = (30 < current_candle['RSI'] < 65)
         
-        signal_label = "NETRAL"
-        
-        if gap_pct <= max_gap_allowed:
-            if is_spring and rsi_good: signal_label = "💎 DIAMOND"
+        signal = "NETRAL"
+        if gap_pct <= max_gap:
+            if is_spring and rsi_good: signal = "💎 DIAMOND"
             elif pos <= 0.15:
-                if gap_pct <= (max_gap_allowed * 0.6): signal_label = "🥇 GOLDEN"
-                else: signal_label = "✅ SAFE BUY"
-            elif 0.85 <= pos <= 1.05: signal_label = "⚠️ BREAKOUT"
-            else: signal_label = "💤 WAIT"
-        else:
-            signal_label = "❌ TRAP"
-
-        rsi_val = current_candle['RSI']
-        if rsi_val < 30: ket_rsi = "🟢 Oversold"
-        elif rsi_val < 45: ket_rsi = "📈 Bangkit"
-        elif rsi_val > 70: ket_rsi = "🔴 Overbought"
-        else: ket_rsi = "⚪ Netral"
+                signal = "🥇 GOLDEN" if gap_pct <= (max_gap*0.6) else "✅ SAFE BUY"
+            elif 0.85 <= pos <= 1.05: signal = "⚠️ BREAKOUT"
+            else: signal = "💤 WAIT"
+        else: signal = "❌ TRAP"
 
         return {
             "Ticker": ticker.replace(".JK", ""),
-            "Keputusan": signal_label,
+            "Keputusan": signal,
             "Tipe": stock_type,
             "Range %": ai_range,
             "Harga": current_candle['Close'],
-            "Support AI": round(ai_support, 0),
+            "Support AI": ai_support,
             "Gap %": gap_pct,
-            "RSI": round(rsi_val, 0),
-            "Ket. RSI": ket_rsi,
+            "RSI": current_candle['RSI'],
             "Data": recent,
             "Resistance": ai_resistance,
-            "Low Klasik": round(classic_low, 0)
+            "Low Klasik": classic_low
         }
-    except:
-        return None
-    return None
+    except: return None
 
 def plot_chart(data_dict):
     df = data_dict['Data']
-    ticker = data_dict['Ticker']
-    signal = data_dict['Keputusan']
-    
     mc = mpf.make_marketcolors(up='g', down='r', inherit=True)
     s = mpf.make_mpf_style(base_mpf_style='yahoo', marketcolors=mc)
-    
-    rsi_lines = [
-        mpf.make_addplot(df['RSI'], panel=2, color='purple', ylabel='RSI', width=1.5),
-        mpf.make_addplot([70]*len(df), panel=2, color='gray', linestyle='--', width=0.8),
-        mpf.make_addplot([30]*len(df), panel=2, color='gray', linestyle='--', width=0.8)
-    ]
+    rsi_p = [mpf.make_addplot(df['RSI'], panel=2, color='purple', width=1.5)]
     
     buf = io.BytesIO()
-    title_text = f"{ticker} [{signal}] - {data_dict['Tipe']}"
-    
     fig, ax = mpf.plot(
-        df, type='candle', style=s, title=title_text, volume=True,
-        addplot=rsi_lines, mav=(20),
+        df, type='candle', style=s, title=f"{data_dict['Ticker']} [{data_dict['Keputusan']}]",
+        volume=True, addplot=rsi_p, mav=(20),
         hlines=dict(hlines=[data_dict['Support AI'], data_dict['Resistance'], data_dict['Low Klasik']], 
-                    colors=['b','b', 'r'], linestyle=['-.', '-.', ':'], linewidths=(1.5, 1.5, 1.0)), 
-        panel_ratios=(6,2,2),
-        savefig=dict(fname=buf, dpi=100, bbox_inches='tight'),
-        returnfig=True
+                    colors=['b','b','r'], linestyle=['-.','-.',':']),
+        panel_ratios=(6,2,2), savefig=dict(fname=buf, dpi=100, bbox_inches='tight'), returnfig=True
     )
     st.pyplot(fig)
-    
-    # --- PENJELASAN (SHOW & HIDE) ---
-    
-    # 1. Ringkasan (Selalu Muncul)
-    if "DIAMOND" in signal:
-        st.success(f"**💎 REKOMENDASI: DIAMOND SETUP** | Reversal Sempurna + Risiko Minim.")
-    elif "GOLDEN" in signal:
-        st.success(f"**🥇 REKOMENDASI: BEST PRICE** | Harga Murah di Support Kuat.")
-    elif "SAFE BUY" in signal:
-        st.info(f"**✅ REKOMENDASI: ACCUMULATE** | Area beli wajar.")
-    elif "TRAP" in signal:
-        st.error(f"**❌ PERINGATAN: JEBAKAN (TRAP)** | Gap Jurang Terlalu Lebar.")
-    elif "BREAKOUT" in signal:
-        st.warning(f"**⚠️ PERINGATAN: RESISTANCE** | Dekat Atap.")
-    else:
-        st.write(f"**💤 STATUS: WAIT AND SEE** | Belum Ada Sinyal Kuat.")
-    
-    # 2. Detail (Expandable)
-    with st.expander(f"🕵️‍♂️ Klik untuk Analisis Detail & Strategi {ticker}"):
-        gap_status = "Aman" if data_dict['Gap %'] <= 0.04 else "Berisiko Tinggi"
-        
-        saran = "Pantau saja."
-        if "TRAP" in signal: saran = "JANGAN MASUK. Tunggu harga turun lagi."
-        elif "DIAMOND" in signal: saran = "ENTRY SEKARANG. Potensi Reversal tinggi."
-        elif "SAFE" in signal or "GOLDEN" in signal: saran = "CICIL BELI di area Support AI."
-        
-        st.markdown(f"""
-        **Bedah Data {ticker}:**
-        * **Posisi:** Rp {data_dict['Harga']:,} (Support AI: Rp {data_dict['Support AI']:,})
-        * **Jurang Bawah:** Rp {data_dict['Low Klasik']:,} (Gap: {data_dict['Gap %']*100:.1f}% - {gap_status})
-        * **Karakter:** {data_dict['Tipe']} (Volatilitas {data_dict['Range %']*100:.1f}%)
-        * **RSI:** {data_dict['RSI']} ({data_dict['Ket. RSI']})
-        
-        **🎯 Action Plan:**
-        {saran}
-        """)
 
-# --- FRONTEND EXECUTION ---
+# --- HALAMAN UTAMA ---
+
+# 1. SCANNING SECTION
 if tombol_scan:
     raw_tickers = [t.strip() for t in ticker_input.split(",") if t.strip()]
-    
-    if len(raw_tickers) > 200:
-        st.warning(f"⚠️ Scan {len(raw_tickers)} saham sedang berjalan...")
+    if len(raw_tickers) > 200: st.warning("Sedang menscan banyak saham, mohon bersabar...")
     
     results = []
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
+    prog = st.progress(0)
     for i, t in enumerate(raw_tickers):
-        status_text.text(f"Scanning ({i+1}/{len(raw_tickers)}): {t}...")
         res = get_ai_status(t)
         if res: results.append(res)
-        progress_bar.progress((i + 1) / len(raw_tickers))
-        
-    status_text.success("Selesai! Silakan pilih baris di tabel untuk melihat grafik.")
-    progress_bar.empty()
+        prog.progress((i+1)/len(raw_tickers))
+    
+    prog.empty()
     st.session_state['hasil_scan'] = results
     st.session_state['status_scan'] = True
 
+# 2. RESULT SECTION
 if st.session_state['status_scan'] and st.session_state['hasil_scan']:
     results = st.session_state['hasil_scan']
     df_res = pd.DataFrame(results)
     
-    # Sorting Priority
-    def assign_priority(sig):
-        if '💎' in sig: return 0
-        if '🥇' in sig: return 1
-        if '✅' in sig: return 2
-        if '⚠️' in sig: return 3
-        if '💤' in sig: return 4
-        if '❌' in sig: return 5
-        return 6
+    # Priority Sorting
+    def prio(x): return {'💎':0,'🥇':1,'✅':2,'⚠️':3,'💤':4,'❌':5}.get(x.split(' ')[0], 6)
+    df_res['Prio'] = df_res['Keputusan'].apply(prio)
+    df_res = df_res.sort_values(by=['Prio', 'Gap %'])
     
-    df_res['Priority'] = df_res['Keputusan'].apply(assign_priority)
-    df_res = df_res.sort_values(by=['Priority', 'Gap %'])
+    cnt_diamond = len(df_res[df_res['Keputusan'].str.contains('💎')])
+    if cnt_diamond > 0: st.success(f"🔥 Ditemukan {cnt_diamond} DIAMOND Setup!")
     
-    # Counts
-    diamond = len(df_res[df_res['Keputusan'].str.contains('💎')])
-    golden = len(df_res[df_res['Keputusan'].str.contains('🥇')])
-    
-    if diamond > 0: st.balloons()
-    
-    st.info(f"📊 Hasil: **{diamond} Diamond**, **{golden} Golden** dari **{len(results)}** saham.")
+    # Tabel Selection
+    def color_row(val):
+        c = {'💎':'#00ced1','🥇':'#ffd700','✅':'#90ee90','❌':'#808080'}.get(val.split(' ')[0], '')
+        return f'background-color: {c}; color: {"white" if c in ["#00ced1","#808080"] else "black"}; font-weight: bold'
 
-    def color_signal(val):
-        if '💎' in val: return 'background-color: #00ced1; color: white; font-weight: bold'
-        if '🥇' in val: return 'background-color: #ffd700; color: black; font-weight: bold'
-        if '✅' in val: return 'background-color: #90ee90; color: black; font-weight: bold'
-        if '❌' in val: return 'background-color: #808080; color: white; font-weight: bold'
-        return ''
-
-    cols_order = ['Ticker', 'Keputusan', 'Tipe', 'Range %', 'Harga', 'Support AI', 'Gap %', 'RSI', 'Ket. RSI']
-    
-    # --- TABEL INTERAKTIF (KLIK UNTUK LIHAT GRAFIK) ---
-    # selection_mode='single-row' membuat tabel punya checkbox di kiri
+    cols = ['Ticker','Keputusan','Tipe','Harga','Support AI','Gap %','RSI']
     event = st.dataframe(
-        df_res[cols_order].style.map(color_signal, subset=['Keputusan']), 
-        use_container_width=True,
-        on_select="rerun",  # PENTING: Rerun script saat diklik
-        selection_mode="single-row",
-        column_config={
-            "Harga": st.column_config.NumberColumn(format="Rp %d"),
-            "Support AI": st.column_config.NumberColumn(format="Rp %d"),
-            "Range %": st.column_config.NumberColumn(format="%.1f %%"),
-            "Gap %": st.column_config.NumberColumn(format="%.1f %%"),
-            "RSI": st.column_config.NumberColumn(format="%.0f"),
-        }
+        df_res[cols].style.map(color_row, subset=['Keputusan']),
+        use_container_width=True, on_select="rerun", selection_mode="single-row",
+        column_config={"Harga": st.column_config.NumberColumn(format="Rp %d"), "Support AI": st.column_config.NumberColumn(format="Rp %d"), "Gap %": st.column_config.NumberColumn(format="%.1f %%"), "RSI": st.column_config.NumberColumn(format="%.0f")}
     )
-    
-    # --- LOGIKA TAMPILKAN GRAFIK BERDASARKAN PILIHAN ---
+
+    # 3. DETAIL & PREDICTION SECTION
     if len(event.selection.rows) > 0:
-        # Ambil index baris yang dipilih
-        selected_index = event.selection.rows[0]
-        # Ambil data Ticker dari dataframe yang sudah di-sort
-        selected_ticker = df_res.iloc[selected_index]['Ticker']
-        
-        # Cari data lengkapnya di hasil scan asli
-        selected_data = next(r for r in results if r['Ticker'] == selected_ticker)
+        idx = event.selection.rows[0]
+        sel_ticker = df_res.iloc[idx]['Ticker']
+        sel_data = next(r for r in results if r['Ticker'] == sel_ticker)
         
         st.divider()
-        st.subheader(f"📈 Analisis Saham Terpilih: {selected_ticker}")
-        plot_chart(selected_data)
-    else:
-        st.write("👈 **Pilih salah satu baris di tabel (klik kotak di kiri)** untuk melihat Grafik & Analisisnya.")
+        st.subheader(f"🔍 Analisis Deep Dive: {sel_ticker}.JK")
+        
+        col_grafik, col_ai = st.columns([2, 1])
+        
+        with col_grafik:
+            plot_chart(sel_data)
+            with st.expander("📖 Penjelasan Teknis (K-Means)"):
+                st.write(f"Saham ini bertipe **{sel_data['Tipe']}**. Support AI terdeteksi di **Rp {sel_data['Support AI']:,.0f}**. Gap risiko ke lantai dasar adalah **{sel_data['Gap %']*100:.1f}%**.")
+
+        with col_ai:
+            st.info("🤖 **MAVERICK AI ENGINE**")
+            st.write("Ingin tahu prediksi harga besok menggunakan Neural Network?")
+            
+            # TOMBOL SAKTI
+            if st.button(f"🧠 Jalankan Prediksi {sel_ticker}", type="primary"):
+                with st.spinner(f"Maverick sedang melatih otak untuk {sel_ticker}... (Mungkin butuh 30-60 detik)"):
+                    pred_price, real_price = run_maverick_prediction(sel_ticker + ".JK")
+                
+                if pred_price:
+                    diff = pred_price - real_price
+                    arah = "NAIK 📈" if diff > 0 else "TURUN 📉"
+                    pct = (diff / real_price) * 100
+                    
+                    st.success("✅ PREDIKSI SELESAI")
+                    st.metric(label="Target Harga Besok", value=f"Rp {pred_price:,.0f}", delta=f"{pct:.2f}%")
+                    st.write(f"**Arah:** {arah}")
+                    st.caption("*Disclaimer: Prediksi AI berbasis probabilitas data historis.*")
+                else:
+                    st.error("Gagal menjalankan prediksi.")
 
 elif st.session_state['status_scan']:
     st.warning("Tidak ditemukan hasil.")
