@@ -10,12 +10,12 @@ from sklearn.cluster import KMeans
 warnings.filterwarnings("ignore")
 
 # --- KONFIGURASI HALAMAN ---
-st.set_page_config(layout="wide", page_title="Screener Saham Smart Explanation")
+st.set_page_config(layout="wide", page_title="Screener Saham Full Inspector")
 
-st.title("💎 Dashboard Sniper Saham (Smart Explanation)")
+st.title("💎 Dashboard Sniper Saham (Full Inspector)")
 st.markdown("""
-Mendeteksi fase akumulasi dengan fitur **Interpretasi Bertingkat**.
-Lihat ringkasan strategi langsung, dan buka detail analisis jika ingin mendalami.
+Mendeteksi fase akumulasi dengan transparansi penuh.
+**Tabel** menampilkan seluruh hasil scan. **Grafik** bisa dipilih manual untuk analisis mendalam (termasuk saham Wait/Trap).
 """)
 
 if 'hasil_scan' not in st.session_state:
@@ -106,6 +106,7 @@ def get_ai_status(ticker):
         
         signal_label = "NETRAL"
         
+        # Logika Keputusan
         if gap_pct <= max_gap_allowed:
             if is_spring and rsi_good:
                 signal_label = "💎 DIAMOND"
@@ -173,36 +174,59 @@ def plot_chart(data_dict):
     )
     st.pyplot(fig)
     
-    # --- FITUR BARU: SHOW/HIDE EXPLANATION ---
+    # --- BAGIAN PENJELASAN LENGKAP (SHOW/HIDE) ---
     
-    # 1. Ringkasan (Selalu Muncul - SHOW)
+    # 1. Ringkasan (Selalu Muncul)
     if "DIAMOND" in signal:
-        st.success(f"**🔥 REKOMENDASI: DIAMOND SETUP** | Sinyal Reversal Terkuat. Harga di Support & RSI Kondusif.")
+        st.success(f"**💎 REKOMENDASI: DIAMOND SETUP** | Reversal Sempurna + Risiko Minim. Sangat Layak Beli.")
     elif "GOLDEN" in signal:
-        st.success(f"**✨ REKOMENDASI: BEST PRICE** | Harga sangat murah, menempel di Support AI. Risiko Minim.")
+        st.success(f"**🥇 REKOMENDASI: BEST PRICE** | Harga Murah di Support Kuat. Akumulasi Bertahap.")
     elif "SAFE BUY" in signal:
-        st.info(f"**✅ REKOMENDASI: ACCUMULATE** | Area beli wajar. Support terjaga.")
+        st.info(f"**✅ REKOMENDASI: ACCUMULATE** | Aman di Support. Potensi Upside Wajar.")
+    elif "TRAP" in signal:
+        st.error(f"**❌ PERINGATAN: JEBAKAN (TRAP)** | Gap Jurang Terlalu Lebar. Jangan Tergiur Harga Murah.")
+    elif "BREAKOUT" in signal:
+        st.warning(f"**⚠️ PERINGATAN: RESISTANCE** | Harga Dekat Atap. Rawan Pantulan ke Bawah.")
+    else: # WAIT
+        st.write(f"**💤 STATUS: WAIT AND SEE** | Belum Ada Sinyal Kuat. Pantau Terus.")
     
-    # 2. Detail (Disembunyikan - SHOW/HIDE)
-    with st.expander(f"🕵️‍♂️ Lihat Analisis Detail & Strategi {ticker}"):
+    # 2. Detail Analisis (Expandable untuk SEMUA signal)
+    with st.expander(f"🕵️‍♂️ Lihat Analisis Detail {ticker} (Risiko & Strategi)"):
+        
+        # Logic Narasi Berdasarkan Sinyal
+        saran_strategi = ""
+        analisis_gap = ""
+        
+        if data_dict['Gap %'] > 0.04:
+            analisis_gap = f"⚠️ **HATI-HATI!** Jarak ke lantai dasar (Support Klasik) cukup jauh ({data_dict['Gap %']*100:.1f}%). Jika garis biru jebol, harga bisa jatuh dalam."
+        else:
+            analisis_gap = f"✅ **AMAN.** Jarak ke lantai dasar sangat tipis ({data_dict['Gap %']*100:.1f}%). Risiko 'False Break' yang dalam relatif kecil."
+
+        if "TRAP" in signal:
+            saran_strategi = "**JANGAN BELI SEKARANG.** Risiko jatuh ke Support Klasik lebih besar daripada potensi naik. Tunggu harga turun lagi atau Gap mengecil."
+        elif "WAIT" in signal:
+            saran_strategi = "**HARGA TANGGUNG.** Posisi harga berada di tengah-tengah (No Man's Land). Risk/Reward ratio tidak menarik."
+        elif "BREAKOUT" in signal:
+            saran_strategi = "**JANGAN FOMO.** Tunggu konfirmasi: Apakah harga berhasil tembus Resistance dengan volume besar? Atau malah memantul turun? Beli jika Breakout valid atau tunggu di Support."
+        else: # Buy Signals
+            saran_strategi = f"**BELI BERTAHAP.** Masuk di area Rp {data_dict['Support AI']:,.0f}. Pasang Stop Loss ketat di bawah Rp {data_dict['Low Klasik']:,.0f}."
+
         st.markdown(f"""
-        **1. Analisis Struktur:**
-        * Saham ini bertipe **{data_dict['Tipe']}** dengan volatilitas {data_dict['Range %']*100:.1f}%.
-        * **Gap Risiko:** {data_dict['Gap %']*100:.1f}%. Jarak antara garis biru (AI) dan garis merah putus-putus (Klasik) tergolong **Aman**.
+        **1. Profil Risiko:**
+        * Tipe Saham: **{data_dict['Tipe']}** (Range: {data_dict['Range %']*100:.1f}%)
+        * Analisis Gap: {analisis_gap}
         
-        **2. Posisi Smart Money:**
-        * Harga Saat Ini: **Rp {data_dict['Harga']:,.0f}**
-        * Markas Bandar (Support AI): **Rp {data_dict['Support AI']:,.0f}**
-        * Jarak ke Markas: {(data_dict['Harga'] - data_dict['Support AI'])/data_dict['Support AI']*100:.1f}% (Semakin dekat, semakin aman).
+        **2. Peta Harga:**
+        * Harga Sekarang: **Rp {data_dict['Harga']:,.0f}**
+        * Support AI (Area Beli): **Rp {data_dict['Support AI']:,.0f}**
+        * Support Klasik (Dasar Jurang): **Rp {data_dict['Low Klasik']:,.0f}**
+        * Resistance (Target Jual): **Rp {data_dict['Resistance']:,.0f}**
         
-        **3. Kondisi Tenaga (RSI):**
-        * RSI saat ini **{data_dict['RSI']} ({data_dict['Ket. RSI']})**.
-        * Jika RSI < 45, artinya tenaga jual sudah habis, potensi pantulan tinggi.
+        **3. Indikator Tenaga (RSI):**
+        * Posisi RSI: **{data_dict['RSI']} ({data_dict['Ket. RSI']})**
         
-        **🎯 Saran Strategi:**
-        * **Entry:** Beli di harga sekarang atau antri di **Rp {data_dict['Support AI']:,.0f}**.
-        * **Stop Loss:** Pasang ketat di bawah garis merah putus-putus (**Rp {data_dict['Low Klasik']:,.0f}**).
-        * **Target Jual:** Jual bertahap saat mendekati garis biru atas (**Rp {data_dict['Resistance']:,.0f}**).
+        **🧠 KESIMPULAN & SARAN:**
+        {saran_strategi}
         """)
         
     st.divider()
@@ -233,27 +257,34 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
     results = st.session_state['hasil_scan']
     df_res = pd.DataFrame(results)
     
+    # Priority Sorting (Hanya untuk urutan tabel, tidak membuang data)
     def assign_priority(sig):
         if '💎' in sig: return 0
         if '🥇' in sig: return 1
         if '✅' in sig: return 2
-        return 5
+        if '⚠️' in sig: return 3 # Breakout
+        if '💤' in sig: return 4 # Wait
+        if '❌' in sig: return 5 # Trap
+        return 6
     
     df_res['Priority'] = df_res['Keputusan'].apply(assign_priority)
-    df_res = df_res.sort_values(by=['Priority', 'Gap %'])
+    df_res = df_res.sort_values(by=['Priority', 'Gap %']) # Sort terbaik di atas, tapi SEMUA ada
     
     diamond_count = len(df_res[df_res['Keputusan'].str.contains('💎')])
     if diamond_count > 0:
         st.balloons()
-        st.success(f"🔥 DITEMUKAN {diamond_count} DIAMOND SETUP DARI {len(results)} SAHAM!")
+        st.success(f"🔥 DITEMUKAN {diamond_count} DIAMOND SETUP!")
     
     def color_signal(val):
         if '💎' in val: return 'background-color: #00ced1; color: white; font-weight: bold'
         if '🥇' in val: return 'background-color: #ffd700; color: black; font-weight: bold'
         if '✅' in val: return 'background-color: #90ee90; color: black; font-weight: bold'
         if '❌' in val: return 'background-color: #808080; color: white; font-weight: bold'
+        if '⚠️' in val: return 'background-color: #ffcccb; color: black; font-weight: bold'
         return ''
 
+    # TABEL LENGKAP (SEMUA SIGNAL)
+    st.subheader("📋 Tabel Hasil Scan (Semua Status)")
     cols_order = ['Ticker', 'Keputusan', 'Tipe', 'Range %', 'Harga', 'Support AI', 'Gap %', 'RSI', 'Ket. RSI']
     
     st.dataframe(
@@ -269,18 +300,19 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
     )
     st.divider()
     
-    # --- BAGIAN REKOMENDASI (Hanya Buy Grades) ---
-    st.subheader("🎯 Rekomendasi Saham (Grafik & Analisis)")
+    # --- INSPEKTOR GRAFIK MANUAL (UNTUK SEMUA SAHAM) ---
+    st.subheader("🔍 Inspektur Grafik & Analisis")
+    st.caption("Pilih saham apa saja dari hasil scan di atas (termasuk Wait/Trap) untuk melihat detail risikonya.")
     
-    # Filter hanya saham layak beli
-    buy_results = [r for r in results if ('💎' in r['Keputusan'] or '🥇' in r['Keputusan'] or '✅' in r['Keputusan'])]
+    # List saham untuk dropdown (Diurutkan berdasarkan prioritas tabel biar enak carinya)
+    list_saham_sorted = df_res['Ticker'].tolist()
     
-    if buy_results:
-        # Tampilkan satu per satu agar penjelasan terbaca jelas (bukan grid)
-        for r in buy_results:
-            plot_chart(r)
-    else:
-        st.info("Tidak ada saham yang memenuhi kriteria beli (Diamond/Golden/Safe Buy) saat ini.")
+    selected_ticker = st.selectbox("Pilih Saham:", list_saham_sorted)
+    
+    if selected_ticker:
+        # Ambil data saham terpilih
+        selected_data = next(r for r in results if r['Ticker'] == selected_ticker)
+        plot_chart(selected_data)
 
 elif st.session_state['status_scan']:
     st.warning("Tidak ditemukan hasil.")
