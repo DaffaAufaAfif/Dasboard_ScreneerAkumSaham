@@ -10,12 +10,11 @@ from sklearn.cluster import KMeans
 warnings.filterwarnings("ignore")
 
 # --- KONFIGURASI HALAMAN ---
-st.set_page_config(layout="wide", page_title="Screener Saham Full Inspector")
+st.set_page_config(layout="wide", page_title="Screener Saham Click-to-View")
 
-st.title("💎 Dashboard Sniper Saham (Full Inspector)")
+st.title("💎 Dashboard Sniper Saham (Interactive)")
 st.markdown("""
-Mendeteksi fase akumulasi dengan transparansi penuh.
-**Tabel** menampilkan seluruh hasil scan. **Grafik** bisa dipilih manual untuk analisis mendalam (termasuk saham Wait/Trap).
+**Cara Pakai:** Lakukan Scan, lalu **KLIK Baris/Centang** pada tabel di bawah untuk memunculkan Grafik & Analisis Detail saham tersebut.
 """)
 
 if 'hasil_scan' not in st.session_state:
@@ -47,7 +46,7 @@ st.sidebar.subheader("Parameter")
 period_days = st.sidebar.slider("Periode Data", 30, 90, 60)
 tombol_scan = st.sidebar.button("🚀 Mulai Scan Masal", type="primary")
 
-# --- FUNGSI LOGIKA ---
+# --- FUNGSI LOGIKA (Engine) ---
 
 def calculate_rsi(series, period=14):
     delta = series.diff()
@@ -86,10 +85,8 @@ def get_ai_status(ticker):
         current_candle = recent.iloc[-1]
         ai_range = (ai_resistance - ai_support) / ai_support
         
-        # Klasifikasi Tipe Saham
         stock_type = "Normal"
         max_gap_allowed = 0.045
-        
         if ai_range <= 0.12:
             stock_type = "🛡️ Stabil"
             max_gap_allowed = 0.025
@@ -106,19 +103,13 @@ def get_ai_status(ticker):
         
         signal_label = "NETRAL"
         
-        # Logika Keputusan
         if gap_pct <= max_gap_allowed:
-            if is_spring and rsi_good:
-                signal_label = "💎 DIAMOND"
+            if is_spring and rsi_good: signal_label = "💎 DIAMOND"
             elif pos <= 0.15:
-                if gap_pct <= (max_gap_allowed * 0.6):
-                    signal_label = "🥇 GOLDEN"
-                else:
-                    signal_label = "✅ SAFE BUY"
-            elif 0.85 <= pos <= 1.05:
-                signal_label = "⚠️ BREAKOUT"
-            else:
-                signal_label = "💤 WAIT"
+                if gap_pct <= (max_gap_allowed * 0.6): signal_label = "🥇 GOLDEN"
+                else: signal_label = "✅ SAFE BUY"
+            elif 0.85 <= pos <= 1.05: signal_label = "⚠️ BREAKOUT"
+            else: signal_label = "💤 WAIT"
         else:
             signal_label = "❌ TRAP"
 
@@ -174,69 +165,48 @@ def plot_chart(data_dict):
     )
     st.pyplot(fig)
     
-    # --- BAGIAN PENJELASAN LENGKAP (SHOW/HIDE) ---
+    # --- PENJELASAN (SHOW & HIDE) ---
     
     # 1. Ringkasan (Selalu Muncul)
     if "DIAMOND" in signal:
-        st.success(f"**💎 REKOMENDASI: DIAMOND SETUP** | Reversal Sempurna + Risiko Minim. Sangat Layak Beli.")
+        st.success(f"**💎 REKOMENDASI: DIAMOND SETUP** | Reversal Sempurna + Risiko Minim.")
     elif "GOLDEN" in signal:
-        st.success(f"**🥇 REKOMENDASI: BEST PRICE** | Harga Murah di Support Kuat. Akumulasi Bertahap.")
+        st.success(f"**🥇 REKOMENDASI: BEST PRICE** | Harga Murah di Support Kuat.")
     elif "SAFE BUY" in signal:
-        st.info(f"**✅ REKOMENDASI: ACCUMULATE** | Aman di Support. Potensi Upside Wajar.")
+        st.info(f"**✅ REKOMENDASI: ACCUMULATE** | Area beli wajar.")
     elif "TRAP" in signal:
-        st.error(f"**❌ PERINGATAN: JEBAKAN (TRAP)** | Gap Jurang Terlalu Lebar. Jangan Tergiur Harga Murah.")
+        st.error(f"**❌ PERINGATAN: JEBAKAN (TRAP)** | Gap Jurang Terlalu Lebar.")
     elif "BREAKOUT" in signal:
-        st.warning(f"**⚠️ PERINGATAN: RESISTANCE** | Harga Dekat Atap. Rawan Pantulan ke Bawah.")
-    else: # WAIT
-        st.write(f"**💤 STATUS: WAIT AND SEE** | Belum Ada Sinyal Kuat. Pantau Terus.")
+        st.warning(f"**⚠️ PERINGATAN: RESISTANCE** | Dekat Atap.")
+    else:
+        st.write(f"**💤 STATUS: WAIT AND SEE** | Belum Ada Sinyal Kuat.")
     
-    # 2. Detail Analisis (Expandable untuk SEMUA signal)
-    with st.expander(f"🕵️‍♂️ Lihat Analisis Detail {ticker} (Risiko & Strategi)"):
+    # 2. Detail (Expandable)
+    with st.expander(f"🕵️‍♂️ Klik untuk Analisis Detail & Strategi {ticker}"):
+        gap_status = "Aman" if data_dict['Gap %'] <= 0.04 else "Berisiko Tinggi"
         
-        # Logic Narasi Berdasarkan Sinyal
-        saran_strategi = ""
-        analisis_gap = ""
+        saran = "Pantau saja."
+        if "TRAP" in signal: saran = "JANGAN MASUK. Tunggu harga turun lagi."
+        elif "DIAMOND" in signal: saran = "ENTRY SEKARANG. Potensi Reversal tinggi."
+        elif "SAFE" in signal or "GOLDEN" in signal: saran = "CICIL BELI di area Support AI."
         
-        if data_dict['Gap %'] > 0.04:
-            analisis_gap = f"⚠️ **HATI-HATI!** Jarak ke lantai dasar (Support Klasik) cukup jauh ({data_dict['Gap %']*100:.1f}%). Jika garis biru jebol, harga bisa jatuh dalam."
-        else:
-            analisis_gap = f"✅ **AMAN.** Jarak ke lantai dasar sangat tipis ({data_dict['Gap %']*100:.1f}%). Risiko 'False Break' yang dalam relatif kecil."
-
-        if "TRAP" in signal:
-            saran_strategi = "**JANGAN BELI SEKARANG.** Risiko jatuh ke Support Klasik lebih besar daripada potensi naik. Tunggu harga turun lagi atau Gap mengecil."
-        elif "WAIT" in signal:
-            saran_strategi = "**HARGA TANGGUNG.** Posisi harga berada di tengah-tengah (No Man's Land). Risk/Reward ratio tidak menarik."
-        elif "BREAKOUT" in signal:
-            saran_strategi = "**JANGAN FOMO.** Tunggu konfirmasi: Apakah harga berhasil tembus Resistance dengan volume besar? Atau malah memantul turun? Beli jika Breakout valid atau tunggu di Support."
-        else: # Buy Signals
-            saran_strategi = f"**BELI BERTAHAP.** Masuk di area Rp {data_dict['Support AI']:,.0f}. Pasang Stop Loss ketat di bawah Rp {data_dict['Low Klasik']:,.0f}."
-
         st.markdown(f"""
-        **1. Profil Risiko:**
-        * Tipe Saham: **{data_dict['Tipe']}** (Range: {data_dict['Range %']*100:.1f}%)
-        * Analisis Gap: {analisis_gap}
+        **Bedah Data {ticker}:**
+        * **Posisi:** Rp {data_dict['Harga']:,} (Support AI: Rp {data_dict['Support AI']:,})
+        * **Jurang Bawah:** Rp {data_dict['Low Klasik']:,} (Gap: {data_dict['Gap %']*100:.1f}% - {gap_status})
+        * **Karakter:** {data_dict['Tipe']} (Volatilitas {data_dict['Range %']*100:.1f}%)
+        * **RSI:** {data_dict['RSI']} ({data_dict['Ket. RSI']})
         
-        **2. Peta Harga:**
-        * Harga Sekarang: **Rp {data_dict['Harga']:,.0f}**
-        * Support AI (Area Beli): **Rp {data_dict['Support AI']:,.0f}**
-        * Support Klasik (Dasar Jurang): **Rp {data_dict['Low Klasik']:,.0f}**
-        * Resistance (Target Jual): **Rp {data_dict['Resistance']:,.0f}**
-        
-        **3. Indikator Tenaga (RSI):**
-        * Posisi RSI: **{data_dict['RSI']} ({data_dict['Ket. RSI']})**
-        
-        **🧠 KESIMPULAN & SARAN:**
-        {saran_strategi}
+        **🎯 Action Plan:**
+        {saran}
         """)
-        
-    st.divider()
 
 # --- FRONTEND EXECUTION ---
 if tombol_scan:
     raw_tickers = [t.strip() for t in ticker_input.split(",") if t.strip()]
     
     if len(raw_tickers) > 200:
-        st.warning(f"⚠️ Scan {len(raw_tickers)} saham sedang berjalan. Mohon tunggu...")
+        st.warning(f"⚠️ Scan {len(raw_tickers)} saham sedang berjalan...")
     
     results = []
     progress_bar = st.progress(0)
@@ -248,7 +218,7 @@ if tombol_scan:
         if res: results.append(res)
         progress_bar.progress((i + 1) / len(raw_tickers))
         
-    status_text.success("Selesai!")
+    status_text.success("Selesai! Silakan pilih baris di tabel untuk melihat grafik.")
     progress_bar.empty()
     st.session_state['hasil_scan'] = results
     st.session_state['status_scan'] = True
@@ -257,39 +227,43 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
     results = st.session_state['hasil_scan']
     df_res = pd.DataFrame(results)
     
-    # Priority Sorting (Hanya untuk urutan tabel, tidak membuang data)
+    # Sorting Priority
     def assign_priority(sig):
         if '💎' in sig: return 0
         if '🥇' in sig: return 1
         if '✅' in sig: return 2
-        if '⚠️' in sig: return 3 # Breakout
-        if '💤' in sig: return 4 # Wait
-        if '❌' in sig: return 5 # Trap
+        if '⚠️' in sig: return 3
+        if '💤' in sig: return 4
+        if '❌' in sig: return 5
         return 6
     
     df_res['Priority'] = df_res['Keputusan'].apply(assign_priority)
-    df_res = df_res.sort_values(by=['Priority', 'Gap %']) # Sort terbaik di atas, tapi SEMUA ada
+    df_res = df_res.sort_values(by=['Priority', 'Gap %'])
     
-    diamond_count = len(df_res[df_res['Keputusan'].str.contains('💎')])
-    if diamond_count > 0:
-        st.balloons()
-        st.success(f"🔥 DITEMUKAN {diamond_count} DIAMOND SETUP!")
+    # Counts
+    diamond = len(df_res[df_res['Keputusan'].str.contains('💎')])
+    golden = len(df_res[df_res['Keputusan'].str.contains('🥇')])
     
+    if diamond > 0: st.balloons()
+    
+    st.info(f"📊 Hasil: **{diamond} Diamond**, **{golden} Golden** dari **{len(results)}** saham.")
+
     def color_signal(val):
         if '💎' in val: return 'background-color: #00ced1; color: white; font-weight: bold'
         if '🥇' in val: return 'background-color: #ffd700; color: black; font-weight: bold'
         if '✅' in val: return 'background-color: #90ee90; color: black; font-weight: bold'
         if '❌' in val: return 'background-color: #808080; color: white; font-weight: bold'
-        if '⚠️' in val: return 'background-color: #ffcccb; color: black; font-weight: bold'
         return ''
 
-    # TABEL LENGKAP (SEMUA SIGNAL)
-    st.subheader("📋 Tabel Hasil Scan (Semua Status)")
     cols_order = ['Ticker', 'Keputusan', 'Tipe', 'Range %', 'Harga', 'Support AI', 'Gap %', 'RSI', 'Ket. RSI']
     
-    st.dataframe(
+    # --- TABEL INTERAKTIF (KLIK UNTUK LIHAT GRAFIK) ---
+    # selection_mode='single-row' membuat tabel punya checkbox di kiri
+    event = st.dataframe(
         df_res[cols_order].style.map(color_signal, subset=['Keputusan']), 
         use_container_width=True,
+        on_select="rerun",  # PENTING: Rerun script saat diklik
+        selection_mode="single-row",
         column_config={
             "Harga": st.column_config.NumberColumn(format="Rp %d"),
             "Support AI": st.column_config.NumberColumn(format="Rp %d"),
@@ -298,21 +272,22 @@ if st.session_state['status_scan'] and st.session_state['hasil_scan']:
             "RSI": st.column_config.NumberColumn(format="%.0f"),
         }
     )
-    st.divider()
     
-    # --- INSPEKTOR GRAFIK MANUAL (UNTUK SEMUA SAHAM) ---
-    st.subheader("🔍 Inspektur Grafik & Analisis")
-    st.caption("Pilih saham apa saja dari hasil scan di atas (termasuk Wait/Trap) untuk melihat detail risikonya.")
-    
-    # List saham untuk dropdown (Diurutkan berdasarkan prioritas tabel biar enak carinya)
-    list_saham_sorted = df_res['Ticker'].tolist()
-    
-    selected_ticker = st.selectbox("Pilih Saham:", list_saham_sorted)
-    
-    if selected_ticker:
-        # Ambil data saham terpilih
+    # --- LOGIKA TAMPILKAN GRAFIK BERDASARKAN PILIHAN ---
+    if len(event.selection.rows) > 0:
+        # Ambil index baris yang dipilih
+        selected_index = event.selection.rows[0]
+        # Ambil data Ticker dari dataframe yang sudah di-sort
+        selected_ticker = df_res.iloc[selected_index]['Ticker']
+        
+        # Cari data lengkapnya di hasil scan asli
         selected_data = next(r for r in results if r['Ticker'] == selected_ticker)
+        
+        st.divider()
+        st.subheader(f"📈 Analisis Saham Terpilih: {selected_ticker}")
         plot_chart(selected_data)
+    else:
+        st.write("👈 **Pilih salah satu baris di tabel (klik kotak di kiri)** untuk melihat Grafik & Analisisnya.")
 
 elif st.session_state['status_scan']:
     st.warning("Tidak ditemukan hasil.")
